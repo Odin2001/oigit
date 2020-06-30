@@ -1,0 +1,29 @@
+Function OIGit_removeDirectory(directory)
+	* currently removes regular files, but could remove subdirs and other file types using setinitdiroptions
+	
+	*Declare Function Utility
+	Declare Function RTI_OS_Directory
+	
+	$Insert logical
+
+	***
+	Declare Function oigit_AppendPath
+
+	success = 0
+
+	success = RTI_OS_Directory( "DELETE", directory ,"*.*", TRUE$ )
+	/*
+	InitDir oigit_AppendPath(directory,"*")
+	remove_files = DirList()
+	If GetByteSize(remove_files) Then 
+		remove_pos = 1
+		loop
+			Remove remove_file From remove_files at Remove_pos Setting flag
+			remove_file = oigit_AppendPath(directory,remove_file)
+			OSDelete remove_file
+		While flag
+		repeat
+	End
+	success = Utility("removedir",directory)
+	*/
+Return success

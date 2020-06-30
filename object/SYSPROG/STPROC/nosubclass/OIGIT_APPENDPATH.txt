@@ -1,0 +1,74 @@
+Function oigit_AppendPath(basepath,addPath1,addPath2,addPath3,addPath4,addPath5,addPath6,addPath7,addPath8)
+**********************************
+* Title..........: oigit_AppendPath
+* Author.......: CRAIG.TILDESLEY
+* Date..........: 12/10/2016
+* Release.....:
+* Description.: Joins upto 9 paths together
+**********************************
+	Declare Function GetByteSize
+	
+	path = basepath
+	If Not(Assigned(addPath1)) Then addPath1 = ""
+	If Not(Assigned(addPath2)) Then addPath2 = ""
+	If Not(Assigned(addPath3)) Then addPath3 = ""
+	If Not(Assigned(addPath4)) Then addPath4 = ""
+	If Not(Assigned(addPath5)) Then addPath5 = ""
+	If Not(Assigned(addPath6)) Then addPath6 = ""
+	If Not(Assigned(addPath7)) Then addPath7 = ""
+	If Not(Assigned(addPath8)) Then addPath8 = ""
+
+	addPath = addPath1
+	Gosub AddPathLabel
+	If added Then
+		addPath = addPath2
+		Gosub AddPathLabel
+		If added Then
+			addPath = addPath3
+			Gosub AddPathLabel
+			If added Then
+				addPath = addPath4
+				Gosub AddPathLabel
+				If added Then
+					addPath = addPath5
+					Gosub AddPathLabel
+					If added Then
+						addPath = addPath6
+						Gosub AddPathLabel
+						If added Then
+							addPath = addPath7
+							Gosub AddPathLabel
+							If added Then
+								addPath = addPath8
+								Gosub AddPathLabel
+							End
+						End
+					End
+				End
+			End
+		End
+	End
+Return path
+
+AddPathLabel:
+	added = 0
+	If GetByteSize(addPath) Then 
+		Begin Case 
+			Case path[-1,1] = "\" And addPath[1,1] = "\"
+				addPath[1,1] = ""
+				If GetByteSize(addPath) Then 
+					path := addPath
+					added = 1
+				End
+			Case path[-1,1] = "\"
+				path := addPath
+				added = 1
+			Case addPath[1,1] = "\"
+				path := addPath
+				added = 1
+			Case 1
+				path := "\":addPath
+				added = 1
+		End Case
+	End
+Return 

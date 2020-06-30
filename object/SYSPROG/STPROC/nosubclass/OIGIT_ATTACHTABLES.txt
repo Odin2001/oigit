@@ -1,0 +1,33 @@
+Subroutine oigit_attachTables(dummy)
+	$Insert OIGit_Common
+	$Insert OIGit_Equates
+	
+	Declare Function oigit_GetIniFile
+	Declare Subroutine Set_Status
+	Declare Subroutine Attach_Table
+	
+	iniFile = git_ini_file@
+	iniSection = control_section@
+	volumes = oigit_GetIniFile(iniFile,iniSection,"ATTACH")
+	Convert TAB$ To " " In volumes
+	volumeMax = dcount(volumes,@fm)
+	
+	For volumeCnt = 1 To volumeMax
+		thisVolume = volumes<volumeCnt>
+		If trimf(thisVolume)[1,1] <> "#" Then 
+			Set_Status(0)
+			flush
+			GarbageCollect
+			location = Field(thisVolume,"*",1)
+			tables = Field(thisVolume,"*",2)
+			Convert "," To @fm In tables
+			account = Field(thisVolume,"*",3)
+			status() = ""
+			Attach_Table(location,tables,account,"")
+			Set_Status(0)
+			status() = ""
+			flush
+			GarbageCollect
+		End
+	Next volumeCnt
+return

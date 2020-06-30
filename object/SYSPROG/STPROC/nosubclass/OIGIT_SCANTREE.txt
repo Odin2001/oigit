@@ -1,0 +1,76 @@
+Function OIGit_ScanTree(inDirectoriesToScan,entityType,extraDirectories)
+	Declare Subroutine SetInitDirOptions
+	***
+	Declare Function OIGit_ConvertPathToEntity
+	Declare Function oigit_AppendPath
+	Declare Function oigit_getIniValue
+	***
+	
+	$Insert OIGit_Equates
+	$Insert OIGit_Common
+	
+	If Not(Assigned(extraDirectories)) Then 
+		extraDirectories = ""
+	End
+	If GetByteSize(gitBaseDir@) = 0 Then 
+		gitBaseDir@ = oigit_getIniValue(git_ini_file@,control_section@,"GITDIR","C:\GIT")
+	End
+	
+	gitEntities = ""
+	dPos = 1
+	If GetByteSize(inDirectoriesToScan) = 0 Then 
+		DirectoriesToScan = @fm
+	End Else 
+		DirectoriesToScan = inDirectoriesToScan
+	End
+	Loop
+		entityPath = DirectoriesToScan[dPos,@fm]
+		dPos = BCol2() + 1
+		
+		* get the items to be added into 
+		SetInitDirOptions("N")
+		Gosub InitPath
+		If GetByteSize(theseEntities) Then 
+			If theseEntities <> STOPGITFROMDELETINGDIR$ Then
+				ePos = 1
+				addingEntities = ""
+				Loop
+					thisEntity = theseEntities[ePos,@fm]
+					ePos = bcol2() + 1
+					addingEntities := OIGit_ConvertPathToEntity(entityPath:"*":thisEntity):@fm
+				While ePos < GetByteSize(theseEntities)
+				Repeat
+				gitEntities := addingEntities
+			End
+		End
+		Gosub GetSubDirectories
+	While dPos < GetByteSize(directoriesToScan)
+	Repeat
+	gitEntities[-1,1] = ""
+Return gitEntities
+
+GetSubDirectories:
+	SetInitDirOptions("D")
+	Gosub InitPath
+	If theseEntities <> EMPTYDIR$ Then 
+		Swap EMPTYDIR$ With "" In theseEntities
+		If GetByteSize(entityPath) Then 
+			Swap @fm With @fm:entityPath:"\" In theseEntities
+		End Else
+			Swap @fm With @fm:entityPath In theseEntities
+		End
+		theseEntities[1,1] = ""
+		DirectoriesToScan := theseEntities:@fm
+	End
+Return
+
+InitPath:
+	If GetByteSize(extraDirectories) Then 
+		initPath = oigit_AppendPath(gitBaseDir@,extraDirectories,entityType,entityPath)
+	End Else 
+		initPath = oigit_AppendPath(gitBaseDir@,entityType,entityPath)
+	End
+	initPath = oigit_AppendPath(initPath,"*")
+	initdir initPath
+	theseEntities = dirList()
+Return

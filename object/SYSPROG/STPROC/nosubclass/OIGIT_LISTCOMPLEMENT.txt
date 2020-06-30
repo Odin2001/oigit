@@ -1,0 +1,121 @@
+Function oigit_ListComplement(listA,listB,listADelimiter,listBDelimiter)
+
+/*
+******************************************************************************************************************************************************************************************************************************************************************************************************
+				
+	Description:
+	*****************
+	finds the members of list A which are not in list B
+	assumes the same delimiter if only list A delimiter is passed
+	delimits the returned list using list A delmiter	
+
+****************************************************************************************************************************************************************************************************************************************************************************************************
+*/
+
+	Declare Function GetByteSize
+	Declare Subroutine V119
+	
+	complement = ""
+	If GetByteSize(listA) Then
+		If GetByteSize(listB) Then
+			* there might be traction in using a locate if listB is small enough to offset the V119
+			Gosub Init
+			Gosub SortLists
+			Gosub FindComplement
+		End Else
+			complement = listA
+		End
+	End
+Return complement
+
+DoSort:
+	If sortList[-1,1] <> @rm Then
+		sortList := @rm
+	End
+	status = ""
+	V119("S","","A","L",sortList,status)
+Return
+
+Init:
+	If GetByteSize(listADelimiter) = 0 Then
+		listADelimiter = @fm
+	End
+	If GetByteSize(listBDelimiter) = 0 Then
+		listBDelimiter = listADelimiter
+	End
+Return
+
+SortLists:
+	* sort both lists so that we can remove from each to process in t = 2 x O(n) 
+	* using location could easily be t = O(n*n)/2
+	* WorkList is the data to be sorted
+
+	sortList = listA
+	Convert listADelimiter To @rm In sortList
+	Gosub DoSort
+	transfer sortList To sortedListA
+	
+	sortList = listB
+	Convert listBDelimiter To @rm In sortList
+	Gosub DoSort
+	transfer sortList To sortedListB
+Return
+
+FindComplement:
+	listAPos = 1
+	listBPos = 1
+	listAItem = ""
+	listBItem = ""
+	Loop
+		Begin Case
+			Case listAItem = listBItem
+				Gosub GetListItemA
+				Gosub GetListItemB
+			Case listAItem < listBItem
+				complement := listAItem
+				Gosub GetListItemA
+			Case listAItem > listBItem
+				Gosub GetListItemB
+		End Case
+	While listAPos > -1 and listBPos > -1
+	Repeat
+	If listAPos > -1 Then
+		complement := listAItem:sortedListA[listAPos,GetByteSize(sortedListA)]
+		Convert @rm To listADelimiter In complement
+	End
+	Convert char(0) To listADelimiter In complement
+	If complement[-1,1] = listADelimiter Then 
+		complement[-1,1] = ""
+	End
+	
+Return
+
+GetListItemA:
+	If listAPos > GetByteSize(sortedListA) Then
+		listAPos = -1
+		listAItem = @rm
+	End Else
+		loop
+			listAItem = sortedListA[listAPos,@rm]
+			listAPos = bcol2() + 1 
+		until listAPos > GetByteSize(sortedListA)
+		Until GetByteSize(listAItem) > 0
+		Repeat
+		listAItem := char(0)
+	End
+Return
+
+GetListItemB:
+	If listBPos > GetByteSize(sortedListB) Then
+		listBPos = -1
+		listBItem = @rm
+	End Else
+		loop
+			listBItem = sortedListB[listBPos,@rm]
+			listBPos = bcol2() + 1 
+		until listAPos > GetByteSize(sortedListB)
+		Until GetByteSize(listBItem) > 0
+		Repeat
+		listBItem := char(0)
+	End
+Return 

@@ -1,0 +1,15 @@
+Function oigit_getIniValue(strIniFile,strSection,strLabel,strDefault)
+
+	Declare Function GetPrivateProfileString
+
+ 	strIniValue = Str(\00\,1024)
+	If Not(Assigned(strDefault)) Then 
+		strDefault = ""
+	End
+	lngRetVal = GetPrivateProfileString(strSection:\00\,strLabel:\00\,strDefault:\00\,strIniValue,Len(strIniValue),strIniFile:\00\)
+	If Not(lngRetVal) Then
+		strIniValue = 'Error'
+	End Else
+		strIniValue = strIniValue[1,lngRetVal]
+	End
+Return strIniValue

@@ -1,0 +1,84 @@
+Function oigit_regex(Search, Pattern, MatchCase)
+/************************************************************************************************
+* Name       :  CS_REGEXMATCH taken from 
+* http://www.congruityservice.com/blog/using-regexp-in-openinsight-coding
+* many thanks as I don't have a compiler to implement pcre
+
+* Description:  A simple wrapper around the Windows Scripting Host RegExp object
+*               For testing if the supplied string matches the specified pattern.
+*               For further reference see http://msdn.microsoft.com/en-us/library/ms974570.aspx
+*
+*             
+* Parameters:
+*   Search      String to test if it matches the regular expression.
+*   Pattern     A regular expression string that will be applied to Search string.
+*   MatchCase   Specify True$/False$ if RegEx search is case sensitive. Defaults to False$
+*
+* Returns:
+*   True$       Search string matches pattern.
+*   False$      No match.
+*   ""          Empty string if search error.  
+*
+* History (Date, Initials, Notes)
+* 12/20/14    JAB    Jared Bratu, Congruity Service
+*
+************************************************************************************************/
+ 
+$Insert Logical
+Equ CRLF$ To \0D0A\
+ 
+*Store the WSHScript regular expression code in a common to prevent initializing it every call.
+common /csre_Com/csre_WScript, csre_init%
+ 
+If Assigned(search) Else Return ""
+If Assigned(pattern) Else Return ""
+If Assigned(matchcase) Else MatchCase = False$ ;* Default to case insensitive matching.
+*If Assigned(csre_init%) Else csre_init% = False$
+*Is this the first call? Jared used csre_init% = False$ but common variables are always clear at inception so the Assigned() Else fails
+If Not(csre_init%) Then
+    *First call, Initialize the RegEx object
+     
+    *Create new OLE Object and set it up.
+   csre_WScript = oleCreateInstance("ScriptControl")
+   OlePutProperty(csre_WScript, "Language", "VBScript")
+    
+   *Prepare a simple VB Script to test the supplied search string and pattern.
+   *Script has two functions, RegExMatch_CaseIns() and RegExMatch()
+    s = ''
+    s<-1> = 'Dim r : Set r = new regexp'
+    s<-1> = 'Function RegExMatch_CaseIns(s,p)'   
+    s<-1> = 'r.IgnoreCase = true : r.Pattern = p'
+    s<-1> = 'RegExMatch_CaseIns = r.Test(s)'
+    s<-1> = 'End Function'
+    s<-1> = 'Function RegExMatch(s,p)'   
+    s<-1> = 'r.IgnoreCase = false : r.Pattern = p'
+    s<-1> = 'RegExMatch = r.Test(s)'
+    s<-1> = 'End Function'
+     
+    *Swap the field marks with line feeds and add it the WScript object
+   Swap @FM With CRLF$ In S
+   x = csre_WScript->AddCode(s)
+    
+   *Mark the object as being initialized
+   csre_init% = True$
+end
+ 
+*WScript object has been initialized. Call the VB Script function with our parameters.
+ 
+*Decide if the search is case sensitive and call appropriate function.
+If MatchCase Then
+    RetVal = csre_WScript->Eval('RegExMatch("' : SEARCH : '","' : PATTERN : '")')
+End Else
+    RetVal = csre_WScript->Eval('RegExMatch_CaseIns("' : SEARCH : '","' : PATTERN : '")')
+End
+ 
+*Normalize the VB Script return value.
+If RetVal = "-1" Then
+    RetVal = True$
+End Else
+    RetVal = False$
+End
+ 
+Return RetVal
+*
+*End Function

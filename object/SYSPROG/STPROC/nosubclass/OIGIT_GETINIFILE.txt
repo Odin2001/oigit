@@ -1,0 +1,15 @@
+Function oigit_GetIniFile(iniFile,iniSection,iniLabel)
+
+	$Insert OIGit_Equates
+	
+	Declare Function oigit_getIniValue
+
+	iniDataFile = oigit_getIniValue(iniFile,iniSection,iniLabel)
+	iniData = ""
+	If iniDataFile <> "Error" Then 
+		OSRead iniData From iniDataFile Then 
+			Swap CRLF$ With @fm In iniData
+		End
+	End
+
+Return iniData

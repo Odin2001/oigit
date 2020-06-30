@@ -1,0 +1,33 @@
+compile Insert OIGit_Equates
+	$insert dict_equates
+	
+	Equ PATHFROM$ To ":*"
+	Equ PATHTO$ To "¦^"
+	Equ STOPGITFROMDELETINGDIR$ To ".stopgitfromdeleteingdir"
+	Equ ENTITYSYSREPOS$ To "sysrepos"
+	Equ ENTITYOBJECT$ To "object"
+	Equ ENTITYDICT$ To "dict"
+	Equ ENTITYRECORD$ To "RECORD"
+	Equ ENTITYDIRECTORY$ To "DOS"
+	Equ EMPTYLEAF$ To "nosubclass"
+	Equ DICTMFSLEN$ To 9
+	Equ DICTMFS$ To "DICT.MFS":@SVM
+	Equ TEMPFILESUFFIX$ To "_TEMP"
+	Equ DICTFIELDSTOCLEAR$ To [DICT_MASTER_FLAG$]
+	Equ GITBRANCH$ To "branch.txt"
+	Equ OIBRANCH$ To "branch.txt"
+	Equ GITCOMMIT$ To "commit.txt"
+	Equ DIFFS$ To "merge\diffs.txt"
+	Equ TEXTREPOSTYPES$ To "STPROC,STPROCINS,MSG,APPNOTE"
+	Equ EMPTYDIR$ To \2EFE2E2E\ ; * ".":@fm:".." 
+	Equ SQL_DICT$ To "DICT.ALL_SQL_DICTS"
+	
+	Equ WRITETEMP$ To 1
+	
+	Equ DEBUGSTRING$ To \C03264C032658A070A0640\
+	
+	Equ ENTITY_CACHE_SIZE$ To 4000
+	
+	Equ CRLF$ To \0D0A\
+	Equ LF$ To \0A\
+	Equ TAB$ To \09\

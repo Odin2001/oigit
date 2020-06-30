@@ -1,0 +1,24 @@
+Function OIGit_TranslateEntityToPath(entity,entityType)
+	$Insert OIGit_Equates
+	
+	entityPath = ""
+	
+	If entityType = ENTITYDICT$ Or entityType = ENTITYRECORD$ Then
+		* need to recognise that these entity types could have extra *'s in them
+		dirMax = 1
+	End Else 
+		dirMax = Count(entity,"*")
+	End
+	
+	For dirCnt = 1 To dirMax
+		pathBit = Field(entity,"*",dirCnt)
+		If GetByteSize(pathBit) = 0 Then
+			pathBit = EMPTYLEAF$
+			nullPath = entityPath:pathBit:"\"
+		End
+		entityPath := pathBit:"\"
+	Next dirCnt
+	*entityPath[-1,1] = ""
+	entityPath := Field(entity,"*",dirMax+1,50)
+	Convert PATHFROM$ To PATHTO$ In entityPath
+Return entityPath

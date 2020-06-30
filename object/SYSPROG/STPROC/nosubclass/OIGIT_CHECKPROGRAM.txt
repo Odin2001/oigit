@@ -1,0 +1,18 @@
+Function oigit_checkprogram(program)
+
+	Declare Function rowexists
+	
+	exists = 0
+	account_pos = 1
+	prog = "$":program
+	Loop
+		Remove account From @appid at account_pos setting flag
+		If account <> "SYSPROG" Then 
+			program_exe = prog:"*":account
+		End Else 
+			program_exe = prog
+		End
+		exists = rowexists("SYSOBJ",program_exe,0) 
+	While flag Or exists
+	repeat
+Return exists

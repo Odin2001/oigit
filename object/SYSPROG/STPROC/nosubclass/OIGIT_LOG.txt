@@ -1,0 +1,8 @@
+Subroutine oigit_log(filename,text)
+	filename_handle = ""
+	OSOpen filename To filename_handle Then 
+		filename_pos = dir(filename)<1>
+		OSBWrite text On filename_handle at filename_pos
+		osclose filename_handle
+	End
+Return 

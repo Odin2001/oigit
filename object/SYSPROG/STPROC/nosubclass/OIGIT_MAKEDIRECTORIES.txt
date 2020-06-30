@@ -1,0 +1,27 @@
+Function oigit_makeDirectories(  iPath  ,  pathContainsAFile  )
+
+/*
+******************************************************************************************************************************************************************************************************************************************************************************************************
+
+	Description:
+	*****************
+	Checks that a full path exists and if it doesn't creates all the directories necessary
+
+****************************************************************************************************************************************************************************************************************************************************************************************************
+*/
+
+	Declare Function RTI_OS_Directory
+	
+	$Insert Logical
+
+	If Assigned(pathContainsAFile) Else
+		pathContainsAFile = 0
+	End
+	If pathContainsAFile Then 
+		filename = iPath[-1,"B\"]
+		path = iPath[1,col1()-1]
+		success = RTI_OS_Directory( "CREATE", path , TRUE$)
+	End Else
+		success = RTI_OS_Directory( "CREATE", iPath , TRUE$)
+	End
+Return success

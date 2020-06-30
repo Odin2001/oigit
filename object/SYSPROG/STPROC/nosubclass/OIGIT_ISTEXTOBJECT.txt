@@ -1,0 +1,7 @@
+Function OIGit_IsTextObject(entityClass)
+	$Insert OIGit_Equates
+
+	Locate entityClass In TEXTREPOSTYPES$ using "," setting textObject Else
+		textObject = 0
+	End
+Return textObject

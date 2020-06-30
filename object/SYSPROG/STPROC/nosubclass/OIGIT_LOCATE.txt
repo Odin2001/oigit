@@ -1,0 +1,45 @@
+Function oigit_Locate(searchString, baseString, usingString, byString, pos, caseInSens)
+
+	* Description.: a function version of locate including the option of a case insensitive search
+
+	Declare Function UCase
+	
+	If Not(Assigned(caseInSens)) Then caseInSens = ""
+	If Not(Assigned(byString)) Then byString = ''
+	If GetByteSize(usingString) = 0 Then usingString = @vm
+	pos = '' ;* V01.01
+	
+	
+	If caseInSens Then
+		tempSearchString = UCase(searchString)
+		tempBaseString = UCase(baseString)
+		tempUsingString = UCase(usingString)
+		If Len(byString) Then
+			Locate tempSearchString In tempBaseString by byString using tempUsingString setting pos Then
+				found = 1
+			End Else
+				found = 0
+			End
+		End Else
+			Locate tempSearchString In tempBaseString using tempUsingString setting pos Then
+				found = 1
+			End Else
+				found = 0
+			End
+		End
+	End Else
+		If Len(byString) Then
+			Locate searchString In baseString by byString using usingString setting pos Then
+				found = 1
+			End Else
+				found = 0
+			End
+		End Else
+			Locate searchString In baseString using usingString setting pos Then
+				found = 1
+			End Else
+				found = 0
+			End
+		End
+	End
+Return found

@@ -1,0 +1,130 @@
+Function OIGit_MergeConflict(message,control,param1,param2,param3,param4)
+
+	Declare Function Utility
+	Declare Function Get_Property
+	Declare Function GetByteSize
+	
+	***
+	Declare Function OIGit_ScanTree
+	Declare Function OIGit_TranslateEntityToPath
+	Declare Function OIGit_AppendSuffix
+	Declare Subroutine OIGit_GetEntityFile
+	Declare Function oigit_AppendPath
+	Declare Function oigit_getIniValue
+	***
+	
+	$Insert Logical
+	$Insert OIGit_Equates
+	$Insert OIGit_Common
+	
+	Gosub Init
+	
+	retval = ""
+	ctrl = Field(control,".",2)
+	Begin Case
+		Case message = "CREATE"
+			Gosub OnCreate
+		Case message = "CLICK"
+			Gosub OnClick
+	End Case 
+
+Return retval
+
+OnCreate:
+	
+	objectConflicts = OIGit_ScanTree("",ENTITYOBJECT$,"merge\base")
+	entities = str(ENTITYOBJECT$:@vm,DCount(objectConflicts,@fm))
+	dictConflicts = OIGit_ScanTree("",ENTITYDICT$,"merge\base")
+	entities := str(ENTITYDICT$:@vm,DCount(dictConflicts,@fm))
+	recordConflicts = OIGit_ScanTree("",ENTITYRECORD$,"merge\base")
+	entities := str(ENTITYRECORD$:@vm,DCount(recordConflicts,@fm))
+	retval := If (GetByteSize(objectConflicts)) Then objectConflicts:@fm Else ""
+	retval := If (GetByteSize(dictConflicts)) Then dictConflicts:@fm Else ""
+	retval := If (GetByteSize(recordConflicts)) Then recordConflicts:@fm Else ""
+	Convert @fm To @vm In retval
+	retval[-1,1] = ""
+	entities[-1,1] = ""
+	retval := @fm:entities
+Return 
+
+OnClick:
+	Begin Case 
+		Case ctrl = "DIFFS"
+			Gosub ShowDiffWindow
+		Case ctrl = "YOURS"
+			mergeDir = "LOCAL"
+			Gosub OverwriteObject
+		Case ctrl = "THEIRS"
+			mergeDir = "REMOTE"
+			Gosub OverwriteObject
+		Case ctrl = "BASE"
+			mergeDir = "BASE"
+			Gosub OverwriteObject
+	End Case
+Return 
+
+ShowDiffWindow:
+	
+	diffTool = oigit_getIniValue(git_ini_file@,"MERGE","DIFFTOOL")
+	If diffTool <> "Error" Then 
+		Gosub GetEntityName
+		If GetByteSize(entity) Then
+			Gosub GetEntityPath
+			Swap "$BASE" With oigit_AppendPath(gitBaseDir@,"merge\base",entityType,entityPath) In diffTool
+			Swap "$REMOTE" With oigit_AppendPath(gitBaseDir@,"merge\remote",entityType,entityPath) In diffTool
+			Swap "$LOCAL" With oigit_AppendPath(gitBaseDir@,"merge\local",entityType,entityPath) In diffTool
+			
+			commandStatus = Utility("RUNWIN",diffTool,-1)
+
+		End
+	End
+Return 
+
+OverwriteObject:
+	Gosub GetEntityName
+	file = ""
+	writeKey = ""
+	OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+	If GetByteSize(file) Then 
+		If writeTempFlag Then 
+			file := TEMPFILESUFFIX$
+		End
+		Gosub GetEntityPath
+		objectPath = oigit_AppendPath(gitBaseDir@,"merge",mergeDir,entityType,entityPath)
+		Open file To f_file Then 
+			OSRead object From objectPath Then 
+				If convertCRLF Then 
+					Swap CRLF$ With @fm In object
+				End	
+				Write object On f_file,writeKey
+			End
+		End
+	End
+Return 
+
+GetEntityName:
+	objects = @window:".OBJECTS"
+	selpos = Get_Property(objects,"SELPOS")
+	array = Get_Property(objects,"DEFPROP")
+	row = selPos<2>
+	entity = array<1,row>
+	entityType = array<2,row>
+	Gosub GetEntityClass
+Return 
+
+GetEntityPath:
+	convertCRLF = ""
+	entityPath = OIGit_AppendSuffix(entityType,entityClass,OIGit_TranslateEntityToPath(entity,entityType),convertCRLF)
+Return 
+
+GetEntityClass:
+	If entityType = ENTITYOBJECT$ Then 
+		entityClass = Field(entity,"*",2)
+	End Else 
+		entityClass = entityType
+	End
+Return
+
+Init:
+	writeTempFlag = oigit_getIniValue(git_ini_file@,"TEMPFILES","WRITETEMP",1)
+Return 

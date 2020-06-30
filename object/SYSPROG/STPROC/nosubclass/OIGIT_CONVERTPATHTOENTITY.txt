@@ -1,0 +1,7 @@
+Function  OIGit_ConvertPathToEntity(passedEntity)
+	$Insert OIGit_Equates
+	
+	thisEntity = passedEntity[1,GetByteSize(passedEntity)-4] ; * get rid of the extension
+	Swap EMPTYLEAF$ With "" In thisEntity
+	Convert "\":PATHTO$ To "*":PATHFROM$ In thisEntity
+Return thisEntity

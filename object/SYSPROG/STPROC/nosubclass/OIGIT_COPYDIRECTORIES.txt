@@ -1,0 +1,151 @@
+Function OIGIT_CopyDirectories(direction)
+	
+	Declare Function GetByteSize
+	Declare Function RTI_OS_Directory
+	***
+	Declare Function oigit_getIniValue
+	Declare Function oigit_AppendPath
+	Declare Function oigit_ListComplement
+	Declare Function oigit_makeDirectories
+	***
+
+	$Insert OIGit_Equates
+	$Insert OIGit_Common
+	
+	Gosub Init
+	
+	Gosub GetLocations
+	Gosub CopyDirectory
+
+Return written:@rm:errors:@rm:warnings:@rm:removed
+
+CopyDirectory:
+	labelMax = DCount(validLabels,@fm)
+	For labelCnt = 1 To labelMax
+		directory = directories<labelCnt>
+		label = validLabels<labelCnt>
+		Gosub GetGitFiles
+		Gosub GetFSFileList
+		If direction _Eqc "tooi" Then 
+			fromList = gitFileList
+			toList = FSFileList
+			fromDir = gitDir
+			toDir = directory
+			fromoi = 0
+		End Else 
+			fromList = FSFileList
+			toList = gitFileList
+			fromDir = directory
+			toDir = gitDir
+			fromoi = 1
+		End
+		Gosub CopyFiles
+		Gosub RemoveEntitiesWhichNoLongerExist
+	Next labelCnt
+Return 
+
+CopyFiles:
+	If GetByteSize(fromList) Then 
+		filePos = 1
+		Loop
+			bremove file From fromList at filePos setting Flag
+			FromFilePath = oigit_AppendPath(FromDir,file)
+			toFilePath = oigit_AppendPath(toDir,file)
+			OSRead FromFile From FromFilePath Else 
+				FromFile = ""
+			End
+			OSRead toFile From toFilePath Else 
+				toFile = ""
+			End
+			recordsEqual = GetByteSize(toFile) = GetByteSize(FromFile)
+			If recordsEqual Then 
+				recordsEqual = (FromFile = toFile)
+			End
+			If Not(recordsEqual) Then 
+				If testMode@ Then 
+					written := "File written :":FromFile:@fm
+				End Else 
+					If oigit_makeDirectories(toFilePath,1) Then 
+						OSWrite FromFile On toFilePath
+						If status() Then 
+							errors := "Unable to write ":toFilePath:" status=":status():@fm
+						End Else 
+							written := "File written :":FromFilePath:@fm
+						End
+					End Else 
+						errors := "Unable to create directory":@fm
+					End
+				End
+			End
+		While flag
+		Repeat
+	End
+Return 
+
+GetGitFiles:
+	gitDir = oigit_AppendPath(gitBaseDir@,ENTITYDIRECTORY$,label)
+	Call setinitdiroptions("N")
+	initDir oigit_AppendPath(gitDir,"*.*")
+	gitFileList = dirlist()
+Return 
+
+GetFSFileList:
+	FSListPath = oigit_AppendPath(directory,"*.*")
+	Call setinitdiroptions("N")
+	initDir FSListPath
+	FSFileList = DirList()
+Return 
+
+GetLocations:
+	directories = ""
+	validLabels = ""
+	directoryLabels = oigit_getIniValue(git_ini_file@,control_section@,"FOLDERKEYS")
+	If directoryLabels = 'Error' Then 
+		*
+	End Else 
+		locationMax = DCount(directoryLabels,",")
+		For directoryCnt = 1 To locationMax
+			locationLabel = Field(directoryLabels,",",directoryCnt)
+			location = oigit_getIniValue(git_ini_file@,"FOLDERS",locationLabel)
+			If location = "Error" Then 
+				Errors := "No directory specified for ":locationLabel:@fm
+			End Else 
+				validLabels<-1> = locationLabel
+				directories<-1> = location
+			End
+		Next directoryCnt
+	End
+Return 
+
+RemoveEntitiesWhichNoLongerExist:
+	If disabledRemoveEntities Then Return 
+	entitiesToRemove = oigit_ListComplement(toList,fromList,@fm)
+	If GetByteSize(entitiesToRemove) Then 
+		removePos = 1
+		Loop
+			Remove removeFile From entitiesToRemove at removePos setting removeFlag
+			removeFilePath = oigit_AppendPath(toDir,removeFile)
+			If testMode@ Then 
+				status() = 0
+			End Else 
+				OSDelete removeFilePath
+			End
+			If status() Then
+				errors := "Can't remove file ":removeFilePath:@fm
+			End Else
+				removed := "Removed ":ENTITYDIRECTORY$:" ":removeFilePath:@fm
+			End
+		While removeFlag
+		repeat
+	End
+Return 
+
+Init:
+	errors = ""
+	warnings = ""
+	written = ""
+	removed = ""
+	disabledRemoveEntities = oigit_getIniValue(git_ini_file@,control_section@,"DISABLEREMOVEENTITIES","0")
+	
+	flag = ""
+Return 

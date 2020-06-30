@@ -1,0 +1,19 @@
+Function OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+	Declare Function OIGit_IsTextObject
+	
+	$Insert OIGit_Equates
+
+	convertCRLF = 0
+	Begin Case 
+		Case entityType = ENTITYRECORD$ 
+			extension = ".rec"
+			convertCRLF = 0
+		Case (entityType = ENTITYOBJECT$ And OIGit_IsTextObject(entityClass))
+			extension = ".txt"
+			convertCRLF = 1
+		Case entityType = ENTITYOBJECT$ And entityClass = "DLL"
+			extension = ".dll"
+		Case 1
+			extension = ".dat"
+	End Case 
+Return objectPath:extension

@@ -1,0 +1,60 @@
+Subroutine OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+	
+	Declare Function oigit_Locate
+	
+	$Insert OIGit_Equates
+	
+	entityItem = entity[-1,"B*"]
+	pos = 0
+	Begin Case 
+		Case entityType = ENTITYSYSREPOS$
+			file = "SYSREPOS"
+			writeKey = entity
+		Case entityType = ENTITYDICT$ Or entityType = ENTITYRECORD$
+			file = Field(entity,"*",1)
+			writeKey = Field(entity,"*",2,99)
+			Convert PATHTO$ To PATHFROM$  In writeKey
+		Case oigit_Locate(entityClass,"STPROC,STPROCINS,STPROCEXE,STPROCDBG",",","",pos,0)
+			file = Field("SYSPROCS,SYSPROCS,SYSOBJ,SYSOBJ",",",pos)
+			account = Field(entity,"*",1)
+			If account = "SYSPROG" Then
+				writeKey = entityItem
+			End Else 
+				writeKey = entityItem:"*":account
+			End
+			dollar = If entityClass = "STPROCEXE" Then "$" Else ""
+			atSign = If entityClass = "STPROCDBG" Then "@" Else ""
+			writeKey[1,0] = dollar:atSign
+		Case entityClass = "APPROW"
+			file = Field(entityItem,":",1)
+			writeKey = Field(entityItem,":",2)
+		Case entityClass = "DATASOURCE"
+			file = "SYSPTRS"
+			writeKey = entityItem
+		Case oigit_Locate(entityClass,"DBCOMPONENT,DBCOMPONENTEXE",",","",pos,0)
+			file = "SYSREPOS":entityClass:"S"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		Case entityClass = "DLL"
+			* handled elsewhere at the moment
+		Case entityClass = "OIEVENT"
+			file = "SYSREPOSEVENTS"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		Case entityClass = "OIEVENTEXE"
+			file = "SYSREPOSEVENTEXES"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		Case entityClass = "OIWIN"
+			file = "SYSREPOSWINS"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		Case entityClass = "OIWINEXE"
+			file = "SYSREPOSWINEXES"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		Case entityClass = "POPUP"
+			file = "SYSREPOSPOPUPS"
+			writeKey = Field(entity,"*",1):"*":Field(entity,"*",3,2)
+		*Case entityClass = "WINEXE"
+			* not handled
+		Case 1
+			file = "OTHER"
+			writekey = entity
+	End Case
+Return 

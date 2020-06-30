@@ -1,0 +1,50 @@
+Function oigit_AnyInString(listA,listB,listDelimiter,caseInsens)
+
+/*
+   
+   Description:   returns TRUE immediately If ANY item in list B is found anywhere In list A. 
+   
+  ********************************************************************************************************************************************************************************************************************************************
+ */
+
+	Declare Function Util_IsNullOrEmpty
+	Declare Function UCase
+	Declare Function GetByteSize
+	
+	retval = 0
+	If GetByteSize(listA) And GetByteSize(listB) Then
+		Gosub Init
+		Gosub FindAMatch
+	End
+Return retval
+
+Init:
+	If GetByteSize(listDelimiter) = 0 Then
+		listDelimiter = @fm
+	End
+	If Not(Assigned(caseInsens)) Then
+		caseInsens = ""
+	End
+Return
+
+FindAMatch:
+	max = GetByteSize(listB)
+	lPos = 1
+	If caseInsens Then
+		loop
+			item = ListB[lPos,listDelimiter]
+			lPos = BCol2()+1
+			retval = Indexc(ListA,item,1)
+		Until retval
+		While lPos < max
+		Repeat
+	End Else 
+		loop
+			item = ListB[lPos,listDelimiter]
+			lPos = BCol2()+1
+			retval = Index(ListA,item,1)
+		Until retval
+		While lPos < max
+		Repeat
+	End
+Return

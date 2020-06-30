@@ -1,0 +1,25 @@
+function oigit_Reuse(source,string)
+
+/*
+
+	Description:   implements the old pick Function reuse. however, you have To provide the multivalue
+
+  ********************************************************************************************************************************************************************************************************************************************
+ */
+
+Declare Function GetByteSize
+
+copySource = source
+delimitersOnly = source
+convert @svm:@vm:@fm to "" in copySource
+convert copySource to "" in delimitersOnly
+
+swap @svm with @svm:string in delimitersOnly
+swap @vm with @vm:string in delimitersOnly
+swap @fm with @fm:string in delimitersOnly
+
+If GetByteSize(source) Then 
+	Return string:delimitersOnly
+End Else 
+	Return ""
+End

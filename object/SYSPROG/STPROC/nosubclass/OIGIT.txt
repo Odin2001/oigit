@@ -1,0 +1,1683 @@
+Function OIGit(cmdline)
+
+**********************************
+* Title..........: OIGIT
+* Author.......: CRAIG.TILDESLEY
+* Date..........: 12/10/2016
+* Release.....:
+* Description.: moves programs, inserts, etc between openinsight and git
+*
+* Update History
+* Who    When      What
+* -----  --------  ------------------------------------------------------
+*
+**********************************
+	/*
+	 TODO 
+	 test - ignore certain fields In certain records
+	 
+	 copy revmedia - attach revmedia And copy table entries
+	 autorun programs On togit?
+	*/
+	Declare Function Repository 
+	Declare Function Get_Repos_Entities
+	Declare Function GetByteSize
+	Declare Function RTI_Crypto
+	Declare Function Raise
+	Declare Function Lower
+	Declare Function Ucase
+	Declare Subroutine Attach_Table
+	Declare Subroutine Create_Table
+	Declare Subroutine SetInitDirOptions
+	Declare Subroutine Create_Volume
+	***
+	Declare Function GetTickcount
+	***
+	Declare Function OIGit_ScanTree
+	Declare Function OIGit_ConvertPathToEntity
+	Declare Function OIGit_TranslateEntityToPath
+	Declare Function OIGit_AppendSuffix
+	Declare Function OIGIT_CopyDirectories
+	Declare Function oigit_AppendPath
+	Declare Function oigit_ListComplement
+	Declare Function oigit_makeDirectories
+	Declare Function oigit_getIniValue
+	Declare Function oigit_AnyInString
+	Declare Function oigit_Locate
+	Declare Function oigit_Reuse
+	Declare Function oigit_regex
+	Declare Function oigit_checkprogram
+	Declare Function oigit_GetIniFile
+	Declare Subroutine OIGit_GetEntityFile
+	Declare Subroutine oigit_log
+	Declare Subroutine oigit_attachTables
+	***
+		
+	$insert sysrepos_col_equates
+	$insert Logical
+	$Insert OIGit_Equates
+	$Insert OIGit_Common
+	$insert repository_equates
+	
+	attributes = 1:@fm:1:@fm:1:@fm:32768:@fm:80
+	
+	retval = ""
+	errors = ""
+	written = ""
+	removed = ""
+	nullPaths = ""
+	warnings = ""
+	entity_dirs = ""
+
+	t1 = GetTickcount()
+	Gosub Init
+
+	Begin Case
+		Case Len(errors)
+		Case oigit_Locate("fromoi",cmdline," ","","",1)
+			direction = "fromoi"
+			Gosub CheckBranch
+			If GetByteSize(errors) = 0 Or testMode@ Then 
+				fromOi = 1
+				Gosub FromOIToGit
+			End
+		Case oigit_Locate("tooi",cmdline," ","","",1)
+			direction = "tooi"
+			fromOi = 0
+			Gosub FromGitToOI
+			If abort_operation = 0 Then 
+				If Not(testMode@) Then 
+					osWrite gitBranch on OIBRANCH$ 
+					If status() Then 
+						errors := "Unable to update branch on OI. Be very careful over branch polution"
+					End
+				End
+			End
+		Case oigit_Locate("export",cmdline," ","","",1)
+			Gosub CheckBranch
+			If GetByteSize(errors) = 0 Then 
+				Gosub ExportEntities
+			End
+		Case 1
+			retval = "USAGE":CRLF$:"=====":CRLF$:"oigit (fromoi | tooi) [-t (testmode)] [-ini=ini path] [-cs=control section]"
+	End Case
+	
+	If Len(errors) Then 
+		retval = "ERRORS":CRLF$:"======":CRLF$:errors:CRLF$
+	End
+	If Len(written) Then
+		written[-1,1] = ""
+		retval<-1> = "WRITTEN":CRLF$:"=======":CRLF$:written
+	End
+	If Len(removed) Then
+		removed[-1,1] = ""
+		retval<-1> = "REMOVED":CRLF$:"=======":CRLF$:removed
+	End
+	If GetByteSize(warnings) Then 
+		warnings[-1,1] = ""
+		retval<-1> = CRLF$:"WARNING":CRLF$:"=======":CRLF$:warnings
+	End
+	t2 = GetTickcount()
+	retval := CRLF$:CRLF$:"control section [":control_section@:"]":CRLF$:cmdline:(If GetByteSize(cmdline) Then " " Else "") : "in ":Oconv(t2-t1,"MD3"):" seconds"
+	Swap @fm With CRLF$ In retval
+
+	OSWrite retval On outputfile
+Return retval
+
+Init:
+	readLH = 1
+	changes_made = 0
+	testMode@ = IndexC(cmdline,"-t",1)
+	
+	do_not_use_reposix = 1
+	repos_keys = ""
+	repos_records = ""
+	
+	ini_location_passed = IndexC(cmdline,"-ini=",1)
+	If ini_location_passed Then 
+		git_ini_file@ = cmdline[ini_location_passed+5,' ']
+	End Else 
+		git_ini_file@ = ".\OIGIT.INI"
+	End 
+	control_section_passed = IndexC(cmdline,"-cs=",1)
+	If control_section_passed Then 
+		control_section@ = UCase(cmdline[control_section_passed+4,' '])
+	End Else 
+		control_section@ = oigit_getIniValue(git_ini_file@,"CONTROL","CONTROL_SECTION","OIGIT")
+	End
+	
+	oigit_attachTables()
+	
+	gitBaseDir@ = oigit_getIniValue(git_ini_file@,control_section@,"GITDIR","C:\GIT")
+	
+	outputfile = oigit_getIniValue(git_ini_file@,control_section@,"OUTPUTFILE","C:\temp\oigit.txt")
+	OSWrite "oigit failed" On outputfile
+	
+	noDict = oigit_getIniValue(git_ini_file@,control_section@,"NODICT",0)
+	dictAccounts = oigit_getIniValue(git_ini_file@,control_section@,"DICTACCOUNTS","GLOBAL,SYSPROG")
+	
+	debugWarn = oigit_getIniValue(git_ini_file@,control_section@,"DEBUG","IGNORE")
+	set_reload = oigit_getIniValue(git_ini_file@,control_section@,"SET_RELOAD_FLAG","")
+	check_program = set_reload
+	Gosub Check_Program
+	do_not_reload = ""
+	
+	disabledRemoveEntities = oigit_getIniValue(git_ini_file@,control_section@,"DISABLEREMOVEENTITIES","0")
+	If disabledRemoveEntities _Eqc "partial" Then 
+		keep_tables = Ucase(oigit_getIniValue(git_ini_file@,control_section@,"KEEPENTITIESFROMTABLES","0"))
+	End Else 
+		keep_tables = ""
+	End
+	copy_revmedia = oigit_getIniValue(git_ini_file@,control_section@,"COPY_REVMEDIA","1")
+	
+	report_source_changes_after_compile = oigit_getIniValue(git_ini_file@,"SECURITY","REPORT_SOURCE_CHANGES_AFTER_COMPILE","BOTH")
+	If report_source_changes_after_compile _Nec "IN" Then report_source_changes_after_compile = "BOTH"
+	report_source_changes_after_compile_BOTH = (report_source_changes_after_compile = "BOTH")
+	source_progs = ""
+	source_time = ""
+	report_source_changes = oigit_getIniValue(git_ini_file@,"SECURITY","REPORT_SOURCE_CHANGES","CHANGED")
+	
+	readTempFlag = oigit_getIniValue(git_ini_file@,"TEMPFILES","READTEMP",0)
+	* defaults to 1 to protect the source database
+	writeTempFlag = oigit_getIniValue(git_ini_file@,"TEMPFILES","WRITETEMP",1)
+	tempVolumeLocation = oigit_getIniValue(git_ini_file@,"TEMPFILES","VOLUMELOCATION","C:\dev\oi")
+	tempVolumeLabel = oigit_getIniValue(git_ini_file@,"TEMPFILES","VOLUMELABEL","SOURCE_TEMP")
+	
+	
+	new_entity_log = oigit_getIniValue(git_ini_file@,"BACKUP","NEW_ENTITY_LOG","1")
+	new_entity_log_classes = oigit_getIniValue(git_ini_file@,"BACKUP","NEW_ENTITY_LOG_CLASSES","STPROC")
+	new_entity_log_filename = oigit_getIniValue(git_ini_file@,"BACKUP","NEW_ENTITY_LOG_FILENAME","C:\temp\git_new_programs.log")
+	
+	Gosub Get_Account_Classes
+	
+	Gosub Get_Info
+	
+	Gosub Get_Control_Section_Config
+	
+
+	Gosub ProcessExcludedFields
+	
+	emptyDir = ".":@fm:".." 
+	
+	OSRead gitBranch From oigit_AppendPath(gitBaseDir@,GITBRANCH$) Else gitBranch = ""
+	OSRead gitCommit From oigit_AppendPath(gitBaseDir@,GITCOMMIT$) Else gitCommit = ""
+	OSRead OIBranch From OIBRANCH$ Else OIBranch = ""
+	Convert LF$ To "" In gitBranch
+	Convert LF$ To "" In OIBranch
+	Convert LF$ To "" In gitCommit
+	
+	convertCRLF = ""
+	Gosub Setup_Temp_Volume
+Return
+
+Setup_Temp_Volume:
+	If ReadTempFlag Or writeTempFlag Then 
+		If dir(oigit_AppendPath(tempVolumeLocation,"revmedia.lk")) Else 
+			If oigit_makeDirectories(tempVolumeLocation) Then 
+				Create_Volume(tempVolumeLabel,"RTP57",tempVolumeLocation,"","")
+			End Else
+				errors := "Unable to create write temp directory ":tempVolumeLocation:@fm
+			End
+		End
+		Attach_Table(tempVolumeLocation,"","","")
+	End
+Return 
+
+Get_Account_Classes:
+	accounts = oigit_getIniValue(git_ini_file@,control_section@,"ACCOUNTS","SYSPROG")
+	accounts_max = dcount(accounts,",")
+	class_section = control_section@:"_CLASSES"
+	real_accounts_max = 0
+	
+	For accounts_cnt = 1 To accounts_max
+		this_account = Field(accounts,",",accounts_cnt)
+		section_classes = oigit_getIniValue(git_ini_file@,class_section,this_account,"")
+		If section_classes = "Error" Then 
+			warnings := "account info missing for ":this_account:@fm
+		End Else 
+			real_accounts_max += 1
+		End
+	Next accounts_cnt 
+
+	Dim account_classes(real_accounts_max)
+	mat account_classes = ""
+	real_accounts_cnt = 0
+	For accounts_cnt = 1 To accounts_max
+		this_account = Field(accounts,",",accounts_cnt)
+		section_classes = oigit_getIniValue(git_ini_file@,class_section,this_account,"")
+		If section_classes <> "Error" Then 
+			real_accounts_cnt += 1
+			If section_classes = "ALL" Then section_classes = ""
+			account_classes(real_accounts_cnt) = section_classes
+		End
+	Next accounts_cnt 
+	accounts_max = real_accounts_max
+Return 
+
+Output_Timings:
+	If Len(timing_info) Then
+		Swap @fm With CRLF$ In timing
+		oigit_log(timing_info,timing:CRLF$)
+	End
+Return 
+
+Get_REVREPOS:
+	If do_not_use_reposix Then 
+		ti1 = gettickcount()
+		actualFile = "SYSREPOS"
+		tablename = "SYSREPOS"
+		If ReadTempFlag Then actualFile := TEMPFILESUFFIX$
+
+		Open actualFile To f.file Then 
+			clearselect
+			Select f.file
+			eof = 0
+			Loop
+				Readnext id Else eof = 1
+			Until eof
+				Read record From f.file,id Then 
+					repos_keys<-1> = id
+					repos_records := record:@rm
+				End
+			repeat
+		End
+		repos_records[-1,1] = ""
+		ti2 = gettickcount()
+		timing = Oconv(ti2 - ti1,"MD3"):" Get REVREPOS":@fm:"---"
+		Gosub Output_Timings
+	End Else 
+		repos_handle = 0
+	End
+Return 
+
+Filter_RevRepos:
+	If do_not_use_reposix Then 
+		entities = ""
+		new_entities = ""
+		repos_key_pos = 1
+		repos_record_pos = 1
+		flag = Len(repos_keys) > 0
+		Loop
+		While flag
+			Remove Id From repos_keys at repos_key_pos setting flag
+			record = repos_records[repos_record_pos,@rm] 
+			repos_record_pos = col2() + 1
+
+			include_flag = 1
+			If Len(account) Then 
+				If Field(id,"*",1) = account Else 
+					include_flag = 0
+				End
+			End
+			If Len(class) Then 
+				If Field(id,"*",2) = class Else 
+					include_flag = 0
+				End
+			End
+			If include_flag Then 
+				new_entities<-1> = id
+				If Len(new_entities) > ENTITY_CACHE_SIZE$ Then 
+					entities<-1> = new_entities
+					new_entities = ""
+				End 
+			End
+		Repeat
+		entities<-1> = new_entities
+	End Else 
+		entities = Get_Repos_Entities(account,class,"")
+	End
+Return 
+
+FromOIToGit:
+	Gosub Get_REVREPOS
+
+	For accounts_cnt = 1 To accounts_max
+		account = Field(accounts,",",accounts_cnt)
+		this_account_classes = account_classes(accounts_cnt)
+		class_max = count(account_classes(accounts_cnt),",") + 1
+		For class_cnt = 1 To class_max
+			class = Field(account_classes(accounts_cnt),",",class_cnt)
+	
+			ti1 = gettickcount()
+			Gosub Filter_RevRepos
+	
+			entityType = ENTITYSYSREPOS$
+			Gosub SkipEntities
+			ti2 = gettickcount()
+			timing = Oconv(ti2 - ti1,"MD3"):" Get_Repos_Entities ":account:",":class:@fm:"---"
+			Gosub Output_Timings
+
+			ti1 = gettickcount()
+			Gosub ScanDirectories
+			ti2 = gettickcount()
+			timing = Oconv(ti2 - ti1,"MD3"):" ScanDirectories ":account:@fm:"---"
+			Gosub Output_Timings
+	
+			ti1 = gettickcount()
+			Gosub TransferRepositoryToGit
+			ti2 = gettickcount()
+			timing = Oconv(ti2 - ti1,"MD3"):" TransferRepositoryToGit ":account:@fm:"---"
+			Gosub Output_Timings
+
+		Next class_cnt
+	Next accounts_cnt
+	
+	ti1 = gettickcount()
+	Gosub TransferRecordsToGit
+	ti2 = gettickcount()
+	timing = Oconv(ti2 - ti1,"MD3"):" TransferRecordsToGit ":@fm:"---"
+	Gosub Output_Timings
+
+	* dictionaries are effectively programs so, but they aren't separate and still with the data
+	If Not(noDict) Or noDict = 'DATA' Or noDict = 'FIELDS' Then
+		ti1 = gettickcount()
+		Gosub TransferDictToGit
+		ti2 = gettickcount()
+		timing = Oconv(ti2 - ti1,"MD3"):" TransferDictToGit ":@fm:"---"
+		Gosub Output_Timings
+	End
+	If copy_revmedia Then 
+		Gosub Transfer_Revmedia_Entries_To_Git
+	End
+	Gosub CopyDirectories
+Return
+
+Transfer_Revmedia_Entries_To_Git:
+Return
+
+Transfer_Git_Entries_To_Revmedia:
+Return  
+
+CopyDirectories:
+	ti1 = gettickcount()
+	copyResults = OIGIT_CopyDirectories(direction)
+	copyWritten = Field(copyResults,@rm,1)
+	If GetByteSize(copyWritten) Then 
+		written := copyWritten
+	End
+	copyErrors = Field(copyResults,@rm,2)
+	If GetByteSize(copyErrors) Then 
+		errors := copyErrors
+	End
+	copyWarnings = Field(copyResults,@rm,3)
+	If GetByteSize(copyWarnings) Then 
+		warnings := copyWarnings
+	End
+	copyRemoved = Field(copyResults,@rm,4)
+	If GetByteSize(copyRemoved) Then 
+		removed := copyRemoved
+	End
+	ti2 = gettickcount()
+	timing = Oconv(ti2 - ti1,"MD3"):" copy directories":@fm:"---"
+	Gosub Output_Timings
+Return 
+
+FromGitToOI:
+	abort_operation = 0
+	Gosub AttachBackup
+	Gosub Get_REVREPOS
+	* do dictionaries first
+	If Not(noDict) Or noDict = 'DATA' Or noDict = 'FIELDS' Then
+		ti1 = gettickcount()
+		Gosub TransferGitToDict
+		ti2 = gettickcount()
+		timing = Oconv(ti2 - ti1,"MD3"):" transfer dicts":@fm:"---"
+		Gosub Output_Timings
+	End
+	
+	If abort_operation Then Return 
+
+	For accounts_cnt = 1 To accounts_max
+		account = Field(accounts,",",accounts_cnt)
+		this_account_classes = account_classes(accounts_cnt)
+		class_max = count(account_classes(accounts_cnt),",") + 1
+		For class_cnt = 1 To class_max
+			class = Field(account_classes(accounts_cnt),",",class_cnt)
+
+			Gosub Filter_RevRepos
+			
+			entityType = ENTITYSYSREPOS$
+			Gosub SkipEntities
+			ti1 = gettickcount()
+			Gosub ScanDirectories
+			ti2 = gettickcount()
+			timing = Oconv(ti2 - ti1,"MD3"):" Scan directories ":account:" ":class:@fm:"---"
+			Gosub Output_Timings
+			
+			ti1 = gettickcount()
+			Gosub TransferGitToRepository
+			ti2 = gettickcount()
+			timing = Oconv(ti2 - ti1,"MD3"):" transfer repository ":account:" ":class:@fm:"---"
+			Gosub Output_Timings
+		Next class_Cnt
+	Next accounts_cnt
+	
+	ti1 = gettickcount()
+	Gosub TransferGitToRecords
+	ti2 = gettickcount()
+	timing = Oconv(ti2 - ti1,"MD3"):" transfer records":@fm:"---"
+	Gosub Output_Timings
+
+	If copy_revmedia Then 
+		Gosub Transfer_Git_Entries_To_Revmedia
+	End
+	Gosub CopyDirectories
+	If Not(testMode@) Then
+		If backupFiles Then
+			Gosub RemoveOldBackupRecords
+		End
+		If Len(set_reload) Then 
+			If Len(do_not_reload) Then 
+				warnings := "reload prevented by following entities":@fm
+				warnings := do_not_reload:@fm
+			End Else 
+				Call @set_reload()
+			End
+		End
+	End
+Return
+
+SkipEntities:
+	transfer entities To unSkippedEntities
+	entities = ""
+	new_entities = ""
+	reposFlag = ""
+	If GetByteSize(unSkippedEntities) Then
+		ePos = 1
+		Loop
+			BRemove entity From unSkippedEntities at ePos setting reposFlag
+			If Len(entity) Then 
+				entityItem = entity[-1,"B*"]
+				Gosub CheckSkip
+				If include And Len(entity) Then 
+					new_entities := entity:@fm
+					If Len(new_entities) > ENTITY_CACHE_SIZE$ Then 
+						entities := new_entities
+						new_entities = ""
+					End
+				End
+			End
+		While reposFlag
+		Repeat
+	End
+	entities := new_entities
+	entities[-1,1] = ""
+Return 
+
+TransferRepositoryToGit:
+	If GetByteSize(entities) Then
+		ePos = 1
+		Loop
+			BRemove entity From entities at ePos setting reposFlag
+			entityItem = entity[-1,"B*"]
+			Gosub DecodeEntity
+			Gosub GetEntityPairs
+		While reposFlag
+		Repeat
+	End
+	Gosub RemoveEntitiesWhichNoLongerExist
+Return
+
+TransferGitToRepository:
+	If GetByteSize(gitEntities) Then 
+		* not going to let the user delete everything by using tooi with no git entries
+		ePos = 1
+		Loop
+			BRemove entity From gitEntities at ePos setting reposFlag
+			Locate entity In noreload_entities Using @fm Setting dummy Then 
+				do_not_reload<-1> = entity
+			End
+			Gosub DecodeEntity
+			Gosub SetEntityPairs
+		While reposFlag
+		Repeat
+		Gosub RemoveEntitiesWhichNoLongerExist
+	End
+Return
+
+SetEntityPairs:
+	Begin Case 
+		Case entityClass = "DLL"
+			entityType = ENTITYSYSREPOS$
+			entityTypeDesc = "Record"
+			Gosub GetEntityFromGit
+
+			dllName = entityRecord<SYSREP_SUB_KEY$>
+			entityType = ENTITYOBJECT$
+			entityTypeDesc = "Object"
+			Gosub TransferGitToDLL
+
+		Case entityClass = "WINEXE"
+			entityType = ENTITYSYSREPOS$
+			entityTypeDesc = "Record"
+			Gosub GetEntityFromGit
+		Case 1
+			entityType = ENTITYOBJECT$
+			entityTypeDesc = "Object"
+			Gosub GetEntityFromGit
+			Gosub Check_Source_Time
+			
+			entityType = ENTITYSYSREPOS$
+			entityTypeDesc = "Record"
+			Gosub GetEntityFromGit
+	End Case	
+Return 
+
+GetEntityFromGit:
+	* used by tooi
+	Gosub DecodeEntity
+	entityPath = OIGit_TranslateEntityToPath(entity,entityType)
+	relativePath = oigit_AppendPath(entityType,entityPath)
+	
+	Gosub ReadEntityRecord
+	objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+	objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+	OSRead recordOnFilingSystem From objectPath Then
+		If convertCRLF Then 
+			Swap CRLF$ With @fm In recordOnFilingSystem
+		End
+		Gosub AreRecordsEqual
+		If Not(recordsEqual) Then 
+			Gosub WriteEntityRecord
+			If success Then 
+				written := entityTypeDesc:" ":actualFile:" ":entity:" written":@fm
+				If backupFiles Then 
+					Gosub BackupEntity
+				End
+			End Else 
+				errors := "can't write ":actualFile:" ":entityTypeDesc:" ":entity:@fm
+			End 
+		End
+	End Else 
+		errors := "Can't read ":entityTypeDesc:" from ":objectPath:@fm
+	End
+Return 
+
+AreRecordsEqual:
+	If GetByteSize(recordOnFilingSystem) = GetByteSize(entityRecord) Then 
+		recordsEqual = (recordOnFilingSystem = entityRecord)
+	End Else 
+		recordsEqual = 0
+	End
+Return 
+
+RemoveEntitiesWhichNoLongerExist:
+	If disabledRemoveEntities = 1 Then Return 
+
+	If fromOI Then 
+		entitiesToRemove = oigit_ListComplement(gitEntities,entities,@fm)
+	End Else 
+		entitiesToRemove = oigit_ListComplement(entities,gitEntities,@fm)
+	End
+	* now loop through the list and remove the items which aren't needed anymore on this branch
+	If GetByteSize(entitiesToRemove) Then
+		
+		ePos = 1
+		removeFlag = ""
+		Loop
+			BRemove removeEntity From entitiesToRemove at ePos setting removeFlag
+			entity = removeEntity
+			Gosub DecodeEntity
+			If Len(keep_tables) Then 
+				OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+				Locate file In keep_tables Using "," Setting process_removal Then process_removal = 0
+			End Else 
+				process_removal = 1
+			End
+			If process_removal Then 
+				If fromOI Then
+					Gosub RemoveGitEntityPair
+				End Else
+					Gosub RemoveOIEntityPair
+				End
+			End
+		While removeFlag
+		repeat
+	End
+Return
+
+RemoveGitEntityPair:
+	entityPath = OIGit_TranslateEntityToPath(entity,entityType)
+	Begin Case 
+		Case entityType = ENTITYOBJECT$ Or entityClass = ENTITYSYSREPOS$
+			textObject = 0 ; * always .dat for the repos entry
+			entityType = ENTITYSYSREPOS$
+			Gosub RemoveGitEntity
+			Begin Case 
+				Case entityClass = "WINEXE"
+					* no need to handle object
+				Case 1
+					entityType = ENTITYOBJECT$
+					Gosub RemoveGitEntity
+			End Case
+		Case 1
+			Gosub RemoveGitEntity
+	End Case 
+Return 
+
+RemoveGitEntity:
+	relativePath = oigit_AppendPath(entityType,entityPath)
+	objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+	objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+	OsDelete objectPath
+	If status() Then
+		errors := "Can't remove file ":objectPath:@fm
+	End Else
+		removed := "Removed ":entityType:" ":removeEntity:@fm
+	End
+Return
+
+RemoveOIEntityPair:
+	Begin Case 
+		Case entityClass = ENTITYOBJECT$ Or entityClass = ENTITYSYSREPOS$
+			entityType = ENTITYSYSREPOS$
+			Gosub GetEntity
+			Gosub RemoveOIEntity
+			Begin Case 
+				Case entityClass = "DLL"
+					dllName = entityRecord<SYSREP_SUB_KEY$>
+					If entityAccount <> "SYSPROG" Or Not(oigit_AnyInString(dllName,'.dll,.dil',',',1)) Then
+						If dllName[-4,4] _nec ".DLL" Then
+							dllName := ".dll"
+						End
+						pathMarks = count(dllName,"\")
+						If pathMarks = 0 Or (pathMarks = 1 And dllName[1,2] = ".\") Then 
+							If testMode@ Then 
+								success = 1
+							End Else
+								OSDelete dllName
+								success = Not(status())
+							End
+							Gosub ReportDeleteSuccess
+						End
+					End
+				Case entityClass = "WINEXE"
+					* no need to handle object
+				Case 1
+					entityType = ENTITYOBJECT$
+					Gosub RemoveOIEntity
+			End Case
+		Case 1
+			Gosub RemoveOIEntity
+	End Case
+Return 
+
+RemoveOIEntity:
+	OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+	*Gosub GetEntityFile
+	If writeTempFlag Then 
+		file := TEMPFILESUFFIX$
+	End
+	success = 0
+	Open file To f.file Then 
+		If testMode@ Then
+			success = 1
+		End Else 
+			Delete f.file, writeKey Then 
+				success = 1
+			End
+		End
+	End
+	Gosub ReportDeleteSuccess
+Return 
+
+ReportDeleteSuccess:
+	If success Then 
+		removed := "Removed ":entityType:" ":entity:@fm
+	End Else 
+		errors := "Unable to remove ":entityType:" ":entity:@fm
+	End
+Return 
+
+GetEntityPairs:
+	Begin Case 
+		Case entityClass = "DLL"
+			entityType = ENTITYSYSREPOS$
+			Gosub GetEntity
+			dllName = entityRecord<SYSREP_SUB_KEY$> ;	* if the DLL reference in field 4 of the sysrepos record contains .DLL or .dil ignore it
+			If entityAccount <> "SYSPROG" Or Not(oigit_AnyInString(dllName,'.dll,.dil',',',1)) Then
+				entityType = ENTITYSYSREPOS$
+				Gosub GetEntity
+				entityType = ENTITYOBJECT$
+				entityTypeDesc = "Object"
+				Gosub TransferDLLToGit
+			End
+		Case entityClass = "WINEXE"
+			entityType = ENTITYSYSREPOS$
+			Gosub GetEntity
+		Case 1
+			entityType = ENTITYSYSREPOS$
+			Gosub GetEntity
+			If report_source_changes_after_compile_BOTH Then 
+				Gosub Check_Source_Time
+			End
+			entityType = ENTITYOBJECT$
+			Gosub GetEntity
+	End Case
+Return
+
+GetEntity:
+	Gosub ReadEntityRecord
+	If success Then
+		Gosub DecodeEntity
+		Gosub ProcessEntityToGit
+	End Else
+		errors := "Unable to read ":entityTypeDesc:" ":entity:@fm
+	End
+Return 
+
+ProcessEntityToGit:
+	status() = 0
+	Gosub CreatePath
+
+	If success Then
+		relativePath = oigit_AppendPath(entityType,entityPath)
+		objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+		objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+		If convertCRLF Then
+			Swap @FM With CRLF$ In entityRecord
+		End
+		
+		OSRead recordOnFilingSystem From objectPath Then 
+			exists = 1
+		End Else
+			exists = 0
+			recordOnFilingSystem = "ERROR!!"
+			status() = 0
+		End
+
+		Gosub CheckRecordsEqual
+		If Not(recordsEqual) Then 
+			If Not(testMode@) Then
+				If debugWarn Then 
+					If entityClass = "STPROCEXE" Then 
+						If Index(entityRecord,DEBUGSTRING$,1) Then
+							warnings := "DEBUG compiled in ":entity:@fm
+						End 
+					End
+				End
+				Gosub write_entity_to_git
+				If Not(exists) And new_entity_log Then 
+					Locate entityClass In new_entity_log_classes Using "," Setting log_class_pos Then 
+						If oigit_makeDirectories(new_entity_log_filename,1) Then 
+							logLine = timeDate():" : ":gitbranch:" : ": gitCommit :" : ":entity:CRLF$
+							oigit_log(new_entity_log_filename,logLine)
+						End
+					End
+				End
+			End
+		End
+	End Else
+		errors := "Can't make directory ":dirToCreate:@fm
+	End
+Return
+
+write_entity_to_git:
+	Gosub CreatePath
+	OSWrite entityRecord On objectPath
+	Begin Case 
+		Case status()
+			errors := "Can't write (status = ":status():") ":entityTypeDesc:" ":entity:@fm
+		Case exists
+			written := "updated:":objectPath:@fm
+		Case 1
+			written := "created:":objectPath:@fm
+	End Case 
+	osclose objectPath
+	changes_made = 1
+Return 
+
+CreatePath:
+	entityPath = OIGit_TranslateEntityToPath(entity,entityType)
+	entityPartsToUse = Count(entityPath,"\")
+	dirToCreate = oigit_AppendPath(gitBaseDir@,entityType,Field(entityPath,"\",1,entityPartsToUse))
+	Gosub CreateDir
+Return
+
+CreateDir:
+	Locate dirToCreate In entity_dirs Using @fm Setting dir_pos Else 
+		entity_dirs<-1> = dirToCreate
+		success = oigit_makeDirectories(dirToCreate)
+		If success Then
+			Locate dirToCreate In nullPaths using @fm setting nullPos Else
+				nullPaths := dirToCreate:@fm
+			End
+		End
+	End
+Return 
+
+TransferRecordsToGit:
+	Gosub GetAllOtherEntities
+	Gosub TransferOtherToGit
+Return 
+
+GetOIDictTables:
+	dti1 = gettickcount()
+	tables = ""
+	tablePos = 1
+	accountPos = 1
+	tableFlag = ""
+	Loop
+		BRemove tableName From @tables(0) at tablePos setting tableFlag
+		BRemove tableType From @tables(1) at tablePos setting tableFlag
+		BRemove tableAccount From @tables(3) at accountPos setting dummy
+		If tablename[1,5] = "DICT." And Field(tableType,"*",1) = "RTP57" Then
+			If Inlist(dictAccounts,tableAccount,",") Then 
+				tables<-1> = tableName 
+			End
+		End
+	While tableFlag
+	Repeat
+	dti2 = gettickcount()
+	timing = Oconv(dti2 - dti1,"MD3"):" Get OI DICT Tables"
+	Gosub Output_Timings
+	*tables[-1,1] = ""
+Return 
+
+GetOIOtherEntities:
+	tablePos = 1
+	entities = ""
+	tempEntities = ""
+	tempEntityCnt = 1
+	Loop
+		BRemove tableName From tables at tablePos setting tableFlag
+		Gosub SubstituteTableName
+		Begin Case
+			Case ReadTempFlag
+				tableName := TEMPFILESUFFIX$
+				keysTable := TEMPFILESUFFIX$
+				Gosub ReadAllRecordKeys
+			Case ReadLH
+				Gosub ReadAllRecordKeys
+		End Case
+	While tableFlag
+	Repeat
+	If GetByteSize(tempEntities) Then ; * used by the LH ReadAllRecordKeys
+		entities := tempEntities
+	End
+	entities[-1,1] = ""
+	Gosub SkipEntities
+Return 
+
+ReadAllRecordKeys:
+	Open keysTable To tableHandle Then
+		Select tableHandle
+		eof = 0
+		Loop
+			readnext id else eof = 1 
+		until eof 
+			includePercFields = (id = "%FIELDS%" And (noDict = 'DATA' Or noDict = 'FIELDS'))
+			includeItem = includePercFields or id[1,1] <> "%"  or entityType <> ENTITYDICT$
+			
+			If includeItem Then 
+				*Convert PATHFROM$ To PATHTO$ In id
+				entity = tableName:"*":id
+				tempEntities := entity:@fm
+				tempEntityCnt += 1
+				If tempEntityCnt = 100 Then 
+					entities := tempEntities
+					tempEntities = ""
+					tempEntityCnt = 1
+				End
+			End
+		Repeat
+		entities := tempEntities
+	End
+Return 
+
+GetGitOtherEntities:
+	entityClass = entityType
+	gitEntities = OIGit_ScanTree(treePath,entityType)
+Return 
+
+
+TransferDictToGit:
+	entityType = ENTITYDICT$
+	Gosub GetOIDictTables
+	tableList = tables
+	tableListPos = 1
+	Loop
+		entities = ""
+		Remove tables From tableList at tableListPos setting tableListFlag
+		Locate tables In skipDict using @fm setting skipDictPos Else
+			treePath = tables
+			Gosub GetGitOtherEntities
+			Gosub GetOIOtherEntities
+			Gosub TransferOtherToGit
+		End
+	While tableListFlag
+	Repeat
+Return
+
+TransferGitToDict:
+	entityType = ENTITYDICT$
+	Gosub GetOIDictTables
+	tableListPos = 1
+	Loop
+		entities = ""
+		Remove tables From tableList at tableListPos setting tableListFlag
+		Locate tables In skipDict using @fm setting skipDictPos else
+			treePath = tables
+			Gosub GetGitOtherEntities
+			Gosub GetOIOtherEntities
+			Gosub TransferGitToOther
+		End
+	While tableListFlag
+	Repeat
+Return 
+
+TransferGitToRecords:
+	Gosub GetAllOtherEntities
+	Gosub TransferGitToOther
+Return 
+
+GetAllOtherEntities:
+	entityType = ENTITYRECORD$
+	treePath = @fm
+	Gosub GetGitOtherEntities
+	tables = includeTables
+	Gosub GetOIOtherEntities
+Return
+
+TransferOtherToGit:
+	If GetByteSize(entities) Then 
+		ePos = 1
+		lastTableName = ""
+		entityFlag = ""
+		filteredEntities = ""
+		Loop
+			BRemove entity From entities at ePos setting entityFlag
+			If Len(entity) Then 
+				tableName = Field(entity,"*",1)
+				recordId = Field(entity,"*",2,99)
+				Convert PATHTO$ To PATHFROM$ In recordId
+				file = tableName
+				writeKey = recordId
+				Gosub ReadEntity
+				proceed = 1
+				If entityType = ENTITYDICT$ Then 
+					If noDict = 0 Then 
+						If recordId[1,1] = "%" Then 
+							proceed = 0
+						End
+					End Else 
+						* restricted dict allows us to write %FIELDS%
+						If recordId = "%FIELDS%" Or (noDict = "DATA" And entityRecord<1> = "S") Else proceed = 0 
+						If recordId = "%FIELDS%" Then
+							Gosub CheckFieldsToGit
+						End
+					End
+				End
+				If proceed Then 
+					If success Then 
+						Gosub ProcessEntityToGit
+						filteredEntities := entity:@fm
+					End Else
+						If keysTable = tableName Then
+							errors := "Can't read record ":entity:@fm
+						End
+					End
+				End
+			End
+		While entityFlag
+		Repeat
+		filteredEntities[-1,1] = ""
+		Transfer filteredEntities To entities
+	End
+	Gosub RemoveEntitiesWhichNoLongerExist
+Return
+
+CheckFieldsToGit:
+	changedDicts = Raise(oigit_ListComplement(EntityRecord<3>,RecordOnFilingSystem<3>,@vm))
+	
+	If GetByteSize(changedDicts) Then 
+		warnings := @FM:"Dicts have been amended for ":tableName:@fm:changedDicts:@fm
+	End
+Return 
+
+CheckFieldsToOI:
+	changedDicts = Raise(oigit_ListComplement(RecordOnFilingSystem<3>,EntityRecord<3>,@vm))
+	
+	If GetByteSize(changedDicts) Then 
+		warnings := @FM:"Dicts need to be manually added for ":tableName:@fm:changedDicts:@fm
+	End
+	recordsEqual = 1 ; * stop %FIELDS% being copied back as the index is managed by adding fields
+Return 
+
+
+TransferGitToOther:
+	If GetByteSize(gitEntities) Then 
+		entityClass = entityType
+		gPos = 1
+		Loop
+			BRemove entity From gitEntities at gPos setting entityFlag
+			tableName = Field(entity,"*",1)
+			Open tableName To tableHandle Then
+				entityPath = OIGit_TranslateEntityToPath(entity,entityType)
+				relativePath = oigit_AppendPath(entityType,entityPath)
+				objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+				objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+				
+				Gosub ReadEntityRecord
+				OSRead recordOnFilingSystem From objectPath Then 
+					If entityType = ENTITYDICT$ Then
+						If writeKey[1,1] <> "%" Then Gosub ClearDictFields
+						Gosub AreRecordsEqual
+						If Not(recordsEqual) Then 
+							If writeKey = "%FIELDS%" Then
+								Gosub CheckFieldsToOI
+							End
+						End
+					End Else 
+						Gosub CheckRecordsEqual
+					End
+					If Not(recordsEqual) Then 
+						Gosub WriteEntityRecord
+						If success Then 
+							written := entity:@fm
+							If backupFiles Then 
+								Gosub BackupEntity
+							End
+						End Else
+							errors := "Can't write ":entityType:" ":entity:@fm
+						End
+					End
+				End Else
+					errors := "Can't read ":entityType:" ":entity:@fm
+				End
+			End
+		While entityFlag
+		Repeat
+		Gosub RemoveEntitiesWhichNoLongerExist
+	End
+Return
+
+BackupEntity:
+	If entityType <> ENTITYSYSREPOS$ Then 
+		Locate entityClass In backupClasses using "," setting backupPos Then 
+			backupEntity = backupCount:"*":entity
+			If convertCRLF Then
+				Swap @FM With CRLF$ In entityRecord
+			End
+			If backup_method = "LH" Then 
+				Write entityRecord On f_backupFilename,backupCount:"*":entity Then 
+					backupKeys := backupEntity:@fm
+				End Else 
+					warnings := "Unable to write backup record : ":entity:@fm
+				End
+			End Else 
+				backup_objectPath = objectPath
+				Swap gitBaseDir@ With "" In backup_objectPath
+				backup_file = oigit_AppendPath(backupPath,backupCount,backup_objectPath)
+				If oigit_makeDirectories(backup_file,1) Then 
+					status = ""
+					OSWrite entityRecord On backup_file 
+					If status() Then 
+						warnings := "Unable to write backup record : ":backup_file:@fm
+					End
+				End Else 
+					warnings := "Unable to create backup folder for : ":backup_file:@fm
+				End
+			End
+		End
+	End
+Return 
+
+TransferDLLToGit:
+	If dllName[-4,4] _nec ".DLL" Then
+		dllName := ".dll"
+	End
+	OSRead entityRecord From dllName Then
+		If success Then
+			relativePath = oigit_AppendPath(entityType,entityPath)
+			objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+			objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+			OSRead recordOnFilingSystem From objectPath Else
+				recordOnFilingSystem = ""
+			End
+			Gosub AreRecordsEqual
+			If Not(recordsEqual) Then 
+				If Not(testMode@) Then 
+					Gosub write_entity_to_git
+				End
+			End
+		End Else 
+			errors := "Can't make directory ":dirToCreate:@fm
+		End
+	End Else
+		* ignore DLL misreads
+		*errors := "Can't read DLL from ":dllName:@fm
+	End
+Return
+
+TransferGitToDLL:
+	entityPath = OIGit_TranslateEntityToPath(entity,entityType)
+	relativePath = oigit_AppendPath(entityType,entityPath)
+	* if the dll name doesn't have an extension assume .dll
+	If Index(dllName,".",1) = 0 Then
+		dllName := ".dll"
+	End
+	OSRead entityRecord From dllName Else 
+		dllRecord = ""
+	End
+	objectPath = oigit_AppendPath(gitBaseDir@,relativePath)
+	objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+	OSRead recordOnFilingSystem From objectPath Then 
+		Gosub AreRecordsEqual
+		If Not(recordsEqual) Then 
+			If Not(testMode@) Then
+				OsWrite dllRecord On dllName
+			End
+		End
+	end
+	If status() Then 
+		errors := "Can't write DLL on ":dllName:@fm
+	End Else 
+		written := entity:@fm
+	End
+	OSClose objectPath
+	OSClose dllName
+Return 
+
+EnsureNullPathsArentEmpty:
+	nullPaths[-1,1] = ""
+	If GetByteSize(nullPaths) Then
+		Convert PATHFROM$ To PATHTO$ In nullPaths
+		nullPos = 1
+		nullFlag = ""
+		Loop
+			BRemove thisNullPath From nullPaths at nullPos setting nullFlag
+			entityType = ENTITYSYSREPOS$
+			Gosub CheckNullPath
+			entityType = ENTITYOBJECT$
+			Gosub CheckNullPath
+		While nullFlag
+		repeat
+	End
+Return 
+
+CheckNullPath:
+	nullPath = oigit_AppendPath(gitBaseDir@,entityType,thisNullPath)
+	SetInitDirOptions("N")
+	initdir oigit_AppendPath(nullPath,"*")
+	If GetByteSize(dirlist()) = 0 Then
+		SetInitDirOptions("D")
+		initdir oigit_AppendPath(nullPath,"*")
+		If GetByteSize(dirlist()) = 0 Then
+			nullPath = oigit_AppendPath(nullPath,STOPGITFROMDELETINGDIR$)
+			OSWrite "" On nullPath
+			OSClose nullPath
+		End
+	End
+	SetInitDirOptions("N")
+Return
+
+ScanDirectories:
+	gitEntities = ""
+	entityType = ENTITYSYSREPOS$
+	If GetByteSize(class) Then 
+		directoriesToScan = oigit_AppendPath(account,class):@fm
+	End Else 
+		directoriesToScan = account:@fm
+	End
+	gitEntities = OIGit_ScanTree(directoriesToScan,entityType)
+Return 
+
+RemoveOldBackupRecords:	
+	backupRemove = backupCount - backupKeep
+	If backupCount - backupKeep > 0 Then 
+		If backup_method = "LH" Then 
+			Write backupKeys On f_dictBackup,"%":backupCount:"%" Then 
+				Read backupRemoveKeys From f_dictBackup,"%":backupRemove:"%" Then 
+					If GetByteSize(backupRemoveKeys) Then 
+						bPos = 1
+						Loop
+							Remove backupId From backupRemoveKeys at bPos setting backupFlag
+							If GetByteSize(backupId) Then 
+								Delete f_dictBackup,backupId
+							End
+						While backupFlag
+						Repeat
+						Delete f_dictBackup,"%":backupRemove:"%"
+					End
+				End
+			End
+		End Else 
+			backup_folder = oigit_AppendPath(backupPath,backupCount)
+			Call OIGit_removeDirectory(backup_folder)
+		End
+	End
+Return 
+
+AttachBackup:
+	backupFiles = 0
+	If testMode@ Then
+		Return 
+	End
+	backupPath = oigit_getIniValue(git_ini_file@,"BACKUP","PATH","")
+	If backupPath = "Error" Then 
+		backupFiles = 0
+	End Else
+		backupClasses = oigit_getIniValue(git_ini_file@,"BACKUP","CLASSES","STPROC,STPROCINS")
+		backupKeep = oigit_getIniValue(git_ini_file@,"BACKUP","KEEP",50)
+		backup_method = oigit_getIniValue(git_ini_file@,"BACKUP","BACKUP_METHOD","DOS")
+		If backup_method = "LH" Then 
+			Gosub Attach_LH_Backup
+		End Else 
+			backupFiles = 1
+			backup_count_file = oigit_AppendPath(backupPath,"BACKUP_COUNTER.TXT")
+			OSRead backupCount From backup_count_file Else backupCount = 0
+			backupCount += 1
+			OSWrite backupCount ON backup_count_file 
+		End
+	End
+Return 
+
+Attach_LH_Backup:
+	backupFilename = oigit_getIniValue(git_ini_file@,"BACKUP","FILENAME","OIGIT_BACKUP")
+	backupVolumeName = oigit_getIniValue(git_ini_file@,"BACKUP","VOLUMENAME","OIGIT_BACKUP")
+	
+	backupFiles = 1
+	backupKeys = ""
+	
+	Attach_Table(backupPath,backupFilename,"","")
+	Open backupFilename To f_backupFilename Else 
+		tableCreated = 0
+		If oigit_makeDirectories(backupPath) Then 
+			Call Create_Volume(backupVolumeName,"RTP57",backupPath,"","")
+			errCode = ""
+			If Get_Status(errCode) = 0 Then 
+				Create_Table(backupVolumeName,backupFilename,0,"GLOBAL",attributes,"")
+				Create_Table(backupVolumeName,backupFilename,1,"GLOBAL",attributes,"")
+				Attach_Table(backupPath,backupFilename,"","")
+				Open backupFilename To f_backupFilename Then 
+					tableCreated = 1
+				End
+			End
+		End
+		If Not(tableCreated) Then 
+			warnings := "Unable to attach backup path ":backupPath:", backups are disabled!":@fm
+			backupFiles = 0
+		End
+	End
+	If backupFiles Then 
+		Open "DICT.":backupFilename To f_dictBackup Then 
+			Read backupCount From f_dictBackup,"%SK%" Else backupCount = 0
+			backupCount += 1
+			Write backupCount On f_dictBackup,"%SK%"
+		End Else 
+			warnings := "Unable to open backup file ":backupFilename:", backups are disabled!":@fm
+			backupFiles = 0
+		End
+	End
+Return 
+
+CheckSkip:
+	skipped = 0
+	include = 0
+	Gosub DecodeEntity
+	* skip then include
+	include = Not(oigit_AnyInString(entity,skipRepos,@fm,1))
+	If Not(include) Then
+		include = oigit_AnyInString(entity,includeRepos,@fm,1)
+	End
+	If include Then
+		If GetByteSize(skipList) Then 
+			sPos = 1
+			skipFlag = ""
+			Loop
+				BRemove skipItem From skipList at sPos setting skipFlag
+				If skipItem[1,1] <> "#" And Len(skipItem) Then 
+					*success = oigit_regex(entityItem,skipItem)
+					include = Not(oigit_regex(entity,skipItem))
+				End
+			While include
+			While skipFlag
+			Repeat
+		End
+	End
+	
+	If Not(include) Then 
+		ipos = 1
+		includeFlag = ""
+		
+		Loop
+			BRemove this_includeItem From includeList at iPos Setting includeFlag
+			If this_includeItem[1,1] <> "#" And Len(this_includeItem) Then 
+				*include = oigit_regex(entityItem,this_includeItem)
+				include = oigit_regex(entity,this_includeItem)
+			End
+		Until include
+		While includeFlag
+		Repeat
+	End
+	If Not(include) Then 
+		If Len(log_record_counts) Then 
+			oigit_log(log_skipped,entity:CRLF$)
+		End 
+	End
+Return 
+
+DecodeEntity:
+	Begin Case 
+		Case entityType = ENTITYSYSREPOS$ Or entityType = ENTITYOBJECT$
+			entityAccount = entity[1,"*"]
+			entityClass = entity[BCol2()+1,"*"]
+			entitySubClass = entity[BCol2()+1,"*"]
+			entityItem = entity[BCol2()+1,"*"]
+		Case 1
+			entityAccount = ""
+			entityClass = entityType
+			entitySubClass = ""
+			entityItem = entity
+	End Case
+Return 
+
+WriteEntity:
+	success = 0
+	If file Then 
+		actualFile = file
+		If writeTempFlag Then 
+			actualFile := TEMPFILESUFFIX$
+		End
+		dictFlag = (If file[1,5]="DICT." Then 1 Else "")
+		If Not(testMode@) Then
+			Open actualFile To f.file Else 
+				If dictFlag Then
+					filenameToCreate = actualFile[6,999]
+				End Else
+					filenameToCreate = actualFile
+				End
+				If writeTempFlag Then 
+					Call Create_Table(tempVolumeLocation,filenameToCreate,dictFlag,"GLOBAL",attributes,"")
+				End
+				Open actualFile To f.file Else 
+					errors := "Unable to create table ":actualFile:@fm
+					Return 
+				End
+			End
+			
+			If dictFlag Then
+				f.file[1,DICTMFSLEN$] = ""
+			End
+		End
+		success = 1
+		If Not(testMode@) Then 
+			success = 0
+			Write recordOnFilingSystem To f.file,writeKey Then success = 1
+		End
+		If success Then 
+			written := entity:@fm
+		End Else
+			errors := entity:@fm
+		End
+	End Else 
+		* panic if it debugs here as we don't know where to write 
+		debug
+	End
+Return 
+
+ReadEntity:
+	success = 0
+	entityRecord = ""
+	If file Then
+		actualFile = file
+		tableName = file
+		Begin Case 
+			Case ReadTempFlag
+				actualFile := TEMPFILESUFFIX$
+				Gosub ReadRecord
+			Case ReadLH
+				Gosub ReadRecord
+		End Case
+	End
+Return 
+
+ReadRecord:
+	Open actualFile To f.file Then 
+		If file[1,5]="DICT." Then 
+			f.file[1,DICTMFSLEN$] = ""
+		End
+		Read entityRecord From f.file,writeKey Then 
+			success = 1
+		End
+	End 
+Return 
+
+WriteEntityRecord:
+	OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+	Gosub WriteEntity
+Return 
+
+ReadEntityRecord:
+	entityTypeDesc = if entityType = ENTITYSYSREPOS$ Then "Record" Else "Object"
+	OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+	If file <> "OTHER" Then 
+		Gosub ReadEntity
+	End 
+Return 
+
+CheckDictsEqual:
+	* some fields are automatically recalculated by dict.mfs despite best efforts to stop it
+	If writeKey[1,1] <> "%" Then Gosub ClearDictFields
+	Gosub AreRecordsEqual
+Return 
+
+ClearDictFields:
+	dPos = 1
+	Loop
+		dictFieldToClear = DICTFIELDSTOCLEAR$[dPos,@fm]
+		dPos = bcol2() + 1
+		entityRecord<dictFieldToClear> = ""
+	While dPos < GetByteSize(DICTFIELDSTOCLEAR$)
+	Repeat 
+	* the object code in 51 seems to change as well, no consistency, bah!!
+	entityRecord = Field(entityRecord,@fm,1,50)
+Return 
+
+ExportEntities:
+	diffFile = oigit_AppendPath(gitBaseDir@,DIFFS$)
+	OSRead diffs From diffFile Then
+		Begin Case 
+			Case diffs[1,4] = "diff" 
+				warnings := "remember to do a git diff with the --name-status option"
+			Case GetByteSize(diffs) = 0
+				warnings := "no differences found"
+			Case 1
+				Gosub ExportDiffs
+		End Case 
+	End Else 
+		errors := "diff file ":diffFile:" not found":@fm
+	End
+Return 
+
+ExportDiffs:
+	exportDrive = oigit_getIniValue(git_ini_file@,"EXPORT","DRIVE","C:\TEMP\UPGRADES")
+	If GetByteSize(exportDrive) = 1 Then 
+		exportDrive := ":"
+	End
+	exportFolder = oigit_getIniValue(git_ini_file@,"EXPORT","FOLDER","\")
+	exportClasses = oigit_getIniValue(git_ini_file@,"EXPORT","CLASSES","STPROC")
+	exportPath = oigit_AppendPath(exportDrive,exportFolder,OIBranch)
+	If oigit_makeDirectories(exportPath) Then 
+		Gosub ConvertDiffsToEntities
+	End Else 
+		errors := "Unable to create export folder ":exportPath:@fm
+	End
+Return 
+
+CheckBranch:
+	If OIBranch <> gitBranch Then 
+		errors := "Git branch ":gitBranch:" and OI branch ":OIBranch:" don't match"
+	End
+Return 
+
+ConvertDiffsToEntities:
+	lPos = 1
+	Loop
+		line = diffs[lPos,LF$]
+		lPos = BCol2() + 1
+		Gosub ProcessDiffLine
+	While lPos < GetByteSize(diffs)
+	Repeat 
+Return 
+
+ProcessDiffLine:
+	If line[1,1] <> "D" And line[2,1] = TAB$ Then 
+		* modified or added but not deleted
+		line[1,2] = "" ; * remove the tab
+		entityType = line[1,"/"]
+		If entityType <> "sysrepos" Then 
+			entityPath = line[BCol2()+1,LF$]
+			Convert "/" To "\" In entityPath
+			entity = OIGit_ConvertPathToEntity(entityPath)
+			Gosub DecodeEntity
+			If oigit_Locate(entityClass,exportClasses,",","","",TRUE$) Then 
+				objectPath = oigit_AppendPath(gitBaseDir@,entityType,entityPath)
+				OSRead recordOnFilingSystem From objectPath Then
+					OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
+					Convert PATHFROM$ To PATHTO$ In entityItem
+					*objectPath = oigit_AppendPath(exportPath,entityClass,entityItem)
+					objectPath = oigit_AppendPath(exportPath,file,entityItem)
+					objectPath = OIGit_AppendSuffix(entityType,entityClass,objectPath,convertCRLF)
+					If oigit_makeDirectories(objectPath,1) Then 
+						OSWrite recordOnFilingSystem To objectPath
+						If status() Then
+							errors := "Can't write (status = ":status():") to ":objectPath:@fm
+						End Else
+							written := objectPath:@fm
+						End
+					End Else 
+						errors := "Can't write to ":objectPath:@fm
+					End
+				End Else
+					recordOnFilingSystem = "Can't read from ":objectPath
+				End
+			End
+		End
+	End
+Return 
+
+SubstituteTableName:
+	keysTable = oigit_getIniValue(git_ini_file@,"SUBSTITUTIONS",tableName)
+	If keysTable = "Error" Then keysTable = tableName
+Return 
+
+CheckRecordsEqual:
+	copyRecordOnFilingSystem = recordOnFilingSystem
+	copyEntityRecord = entityRecord
+	Locate file:"*":writeKey In ExcludedRecordFileAndKeys using @fm setting excludePos Then 
+		thisExclude = ExcludedRecordFields<excludePos>
+		excludeMax = DCount(thisExclude,",")
+		For excludeCnt = 1 To excludeMax
+			excludeField = Field(thisExclude,",",excludeCnt)
+			copyRecordOnFilingSystem<excludeField> = ""
+			copyEntityRecord<excludeField> = ""
+		Next excludeCnt
+	End
+	Gosub AreRecordsEqual
+Return 
+
+ProcessExcludedFields:
+	ExcludedRecordFileAndKeys = ""
+	ExcludedRecordFields = ""
+	max = DCount(ExcludedFields,@fm)
+	For cnt = 1 To max
+		thisline = ExcludedFields<cnt>
+		fileAndKey = thisline[1,","]
+		If GetByteSize(fileAndKey) Then
+			fields = thisline[BCol2()+1,@fm]
+			ExcludedRecordFileAndKeys<-1> = fileAndKey
+			ExcludedRecordFields<-1> = fields
+		End
+	Next cnt
+Return 
+
+Check_Source_Time:
+	If entityClass = "STPROC" Then 
+		If report_source_changes _Eqc "ALL" Or Not(recordsEqual) Then
+			source_progs<-1> = entityItem
+			source_time<-1> = entityRecord<25>
+		End 
+	End
+
+	If entityClass = "STPROCEXE" Then 
+		Locate entityItem In source_progs Using @fm Setting source_check_pos Then 
+			If source_time<source_check_pos> > entityRecord<25> Then 
+				warnings := entity:" changed after latest compilation.":@fm
+			End
+		End
+	End
+Return 
+
+Get_Info:
+	timing_info = oigit_getIniValue(git_ini_file@,"INFO","LOG_TIMINGS")
+	If timing_info = "Error" Then 
+		timing_info = ""
+	End Else 
+		OSDelete timing_info
+	End 
+	log_skipped = oigit_getIniValue(git_ini_file@,"INFO","LOG_SKIPPED")
+	If log_skipped = "Error" Then 
+		log_skipped = ''
+	End Else 
+		OSDelete log_skipped
+	End 
+	log_record_counts = oigit_getIniValue(git_ini_file@,"INFO","LOG_RECORD_COUNTS")
+	If log_skipped = "Error" Then 
+		log_record_counts = ''
+	End Else 
+		OSDelete log_record_counts
+	End 
+Return 
+
+Get_Control_Section_Config:
+	iniSection = control_section@
+	iniFile = git_ini_file@
+
+	tempIncludeTables = oigit_GetIniFile(iniFile,iniSection,"INCLUDETABLES")
+	Gosub ParseIncludeTables
+	noreload_entities = oigit_GetIniFile(iniFile,iniSection,"RELOAD_PREVENTING_ENTITIES")
+	skipList = oigit_GetIniFile(iniFile,iniSection,"SKIPITEM")
+	includeList = oigit_GetIniFile(iniFile,iniSection,"INCLUDEITEM")
+	skipRepos = oigit_GetIniFile(iniFile,iniSection,"SKIPREPOS" )
+	includeRepos = oigit_GetIniFile(iniFile,iniSection,"INCLUDEREPOS" )
+	skipDict = oigit_GetIniFile(iniFile,iniSection,"SKIPDICT" )
+	LinearHashFiles = oigit_GetIniFile(iniFile,iniSection,"LINEARHASHFILES")
+	ExcludedFields = oigit_GetIniFile(iniFile,iniSection,"FIELDEXCLUDE")
+Return
+
+ParseIncludeTables:
+	includeTables = ""
+	includeTablesMax = dcount(tempIncludeTables,@fm)
+	For includeTablesCnt = 1 To includeTablesMax
+		thisIncludeTable = trimf(tempIncludeTables<includeTablesCnt>)
+		If thisIncludeTable[1,1] <> "#" Then 
+			If Field(thisIncludeTable,"*",1) = "VOLUME" Then 
+				attachVolume = Ucase(Field(thisIncludeTable,"*",2))
+				Gosub ParseVolume
+			End Else 
+				includeTables<-1> = thisIncludeTable
+			End
+		End
+	Next includeTablesCnt
+Return 
+
+ParseVolume:
+	volumeTables = Xlate("SYSVOLUMES","RTP57*":attachVolume,"TABLE_LIST","X")
+	volumeTablesMax = dcount(volumeTables,",")
+	For volumeTablesCnt = 1 To volumeTablesMax
+		volumeTable = Field(volumeTables,",",volumeTablesCnt)
+		If volumeTable[1,5] <> "DICT." And volumeTable[1,1] <> "!" Then 
+			includeTables<-1> = volumeTable
+		End
+	Next volumeTablesCnt
+Return 
+
+Check_Program:
+	If Len(set_reload) Then 
+		If Not(oigit_checkprogram(set_reload)) Then
+			set_reload = ""
+		End
+	End
+Return 
