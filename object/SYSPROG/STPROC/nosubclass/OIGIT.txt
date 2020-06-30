@@ -145,6 +145,10 @@ Init:
 	End Else 
 		control_section@ = oigit_getIniValue(git_ini_file@,"CONTROL","CONTROL_SECTION","OIGIT")
 	End
+	redirect = oigit_getIniValue(git_ini_file@,control_section@,"REDIRECT","")
+	If redirect[-4,4] _EQC ".INI" Then 
+		git_ini_file@ = redirect
+	End 
 	
 	oigit_attachTables()
 	
@@ -1352,7 +1356,7 @@ CheckSkip:
 		Repeat
 	End
 	If Not(include) Then 
-		If Len(log_record_counts) Then 
+		If Len(log_skipped) Then 
 			oigit_log(log_skipped,entity:CRLF$)
 		End 
 	End
