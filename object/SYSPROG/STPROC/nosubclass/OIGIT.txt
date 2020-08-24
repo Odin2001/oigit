@@ -707,7 +707,6 @@ Return
 
 RemoveOIEntity:
 	OIGit_GetEntityFile(entity,entityType,entityClass,file,writeKey)
-	*Gosub GetEntityFile
 	If writeTempFlag Then 
 		file := TEMPFILESUFFIX$
 	End

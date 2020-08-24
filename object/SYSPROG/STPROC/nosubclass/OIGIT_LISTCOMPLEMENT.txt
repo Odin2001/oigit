@@ -95,13 +95,17 @@ GetListItemA:
 		listAPos = -1
 		listAItem = @rm
 	End Else
+		last_listAItem = listAItem
 		loop
-			listAItem = sortedListA[listAPos,@rm]
+			listAItem = sortedListA[listAPos,@rm]:char(0)
 			listAPos = bcol2() + 1 
 		until listAPos > GetByteSize(sortedListA)
-		Until GetByteSize(listAItem) > 0
+		Until GetByteSize(listAItem) > 0 And listAItem <> last_listAItem
 		Repeat
-		listAItem := char(0)
+		If listAPos > GetByteSize(sortedListA) And listAItem = last_listAItem Then
+			listAPos = -1
+			listAItem = @rm
+		End
 	End
 Return
 
