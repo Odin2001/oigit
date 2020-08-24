@@ -14,10 +14,9 @@ Function OIGit(cmdline)
 **********************************
 	/*
 	 TODO 
-	 test - ignore certain fields In certain records
 	 
 	 copy revmedia - attach revmedia And copy table entries
-	 autorun programs On togit?
+
 	*/
 	Declare Function Repository 
 	Declare Function Get_Repos_Entities
@@ -99,7 +98,7 @@ Function OIGit(cmdline)
 				Gosub ExportEntities
 			End
 		Case 1
-			retval = "USAGE":CRLF$:"=====":CRLF$:"oigit (fromoi | tooi) [-t (testmode)] [-ini=ini path] [-cs=control section]"
+			retval = "USAGE":CRLF$:"=====":CRLF$:"oigit (fromoi | tooi) [-t] [-ini=ini path] [-cs=control section]"
 	End Case
 	
 	If Len(errors) Then 

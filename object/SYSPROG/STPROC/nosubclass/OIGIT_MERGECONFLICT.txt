@@ -31,7 +31,13 @@ Function OIGit_MergeConflict(message,control,param1,param2,param3,param4)
 Return retval
 
 OnCreate:
-	
+	git_ini_file@ = ".\OIGIT.INI"
+	control_section@ = oigit_getIniValue(git_ini_file@,"CONTROL","CONTROL_SECTION","OIGIT")
+	redirect = oigit_getIniValue(git_ini_file@,control_section@,"REDIRECT","")
+	If redirect[-4,4] _EQC ".INI" Then 
+		git_ini_file@ = redirect
+	End 
+
 	objectConflicts = OIGit_ScanTree("",ENTITYOBJECT$,"merge\base")
 	entities = str(ENTITYOBJECT$:@vm,DCount(objectConflicts,@fm))
 	dictConflicts = OIGit_ScanTree("",ENTITYDICT$,"merge\base")
