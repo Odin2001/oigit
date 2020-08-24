@@ -1,0 +1,2 @@
+# regular expressions to include specific items
+^SYSVOC\*OIGIT

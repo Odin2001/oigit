@@ -1,0 +1,39 @@
+#!/bin/bash
+
+cwd=$(pwd)
+cd $(git rev-parse --show-toplevel)
+if [ ! -d "merge" ]; then
+	mkdir merge
+fi
+cd merge
+if [ ! -d "base" ]; then
+	mkdir base
+fi
+if [ ! -d "local" ]; then
+	mkdir local
+fi
+if [ ! -d "remote" ]; then
+	mkdir remote
+fi
+cd $cwd
+
+filename=${4%\"}
+filename=${filename#\"}
+base=${1%\"}
+base=${base#\"}
+local=${2%\"}
+local=${local#\"}
+remote=${3%\"}
+remote=${remote#\"}
+
+filenamedir=$(dirname $filename)
+filename=$(basename $filename)
+
+mkdir -p merge/base/$filenamedir
+mkdir -p merge/local/$filenamedir
+mkdir -p merge/remote/$filenamedir
+mv $base merge/base/$filenamedir/$filename
+mv $local merge/local/$filenamedir/$filename
+mv $remote merge/remote/$filenamedir/$filename
+cp -t $filenamedir merge/remote/$filenamedir/$filename
+exit 0

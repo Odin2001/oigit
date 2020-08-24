@@ -1,0 +1,38 @@
+#!/bin/bash
+begin=$(date +"%s")
+
+oidir="/c/revsoft/OInsight"
+rundir="/c/revsoft/OInsight"
+tempdir="/c/temp"
+
+if [ ! -d $tempdir ]; then
+  mkdir $tempdir
+fi
+
+oirunning=$(ps -W -s | grep "OINSIGHT\|OENGINE")
+
+if [[ $oirunning ]]; then 
+	if echo $@ | grep -qi 'tooi'
+	then
+		read -p "OpenInsight is running are you sure you want to perform a tooi operation (Y/N) " -N 1 run_tooi
+		if [[ $run_tooi != "y" && $run_tooi != "Y" ]]
+		then
+			echo
+			exit 1 
+		else
+			echo
+		fi
+	fi
+fi
+
+cd $oidir
+
+# call 32 bit version of the vbscript handler
+/c/windows/syswow64/cscript $rundir/oigit.vbs $@
+cat /c/temp/oigit.txt
+echo
+cd - > /dev/null
+
+termin=$(date +"%s")
+difftimelps=$(($termin-$begin))
+echo "$(($difftimelps / 60)) minutes and $(($difftimelps % 60)) seconds elapsed for Script Execution."

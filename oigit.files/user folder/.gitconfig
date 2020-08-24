@@ -1,0 +1,28 @@
+[user]
+	name = <Full Name>
+	email = <email address>
+	
+# this is a global ignore file, so be very careful with this if you have multiple repos.
+# if you have issues with a global file transfer the config to the local repo gitignore file
+[core]
+	excludesfile = ~/.gitignore
+	
+[alias]
+	root = rev-parse --show-toplevel
+
+# this tidies up after a merge conflict has been resolved
+[mergetool]
+	keepBackup = false
+
+# git "knows" about kdiff3 so looks in the place it expects
+[merge]
+	tool = kdiff3
+
+# config your favourite 3 way mergetool here
+# you can have multiple diff tools configured using these parameterised sections
+[diff]
+	guitool = p4merge
+	
+[difftool "p4merge"]
+	path = C:/Program Files/Perforce/p4merge.exe
+	cmd = \"C:/Program Files/Perforce/p4merge.exe\" \"$LOCAL\" \"$REMOTE\"

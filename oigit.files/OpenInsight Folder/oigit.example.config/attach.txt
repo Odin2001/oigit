@@ -1,0 +1,2 @@
+# put list of volumes here. * delimited sections. leave tablelist blank for all tables, table are comma delimited. 
+# C:\TABLES\DATA*TABLE1,TABLE2,TABLE3*MYACCOUNT
